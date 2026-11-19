@@ -59,14 +59,15 @@
 
 ## 3. 역할별 담당 폴더 (각자 담당 폴더만 수정)
 
-| 담당 | 역할 | 수정 가능한 폴더 |
-|---|---|---|
-| **A 팀장** | 인프라·스키마·통합·배포 | `supabase/`, `lib/supabase/`, `types/`, 설정 파일 전부 |
-| **B** | 메시지 코어: 송수신, Realtime, 멱등, 델타 동기화, 스레드, 무한스크롤 | `components/chat/` |
-| **C** | 계정·채널·권한: 로그인, 채널·DM, 관리자 권한, RLS(설계) | `app/(auth)/`, `components/channel/` |
-| **D** | 실사용 기능: 첨부, 읽음, 미읽음 배지, 멘션 알림 | `components/attachments/`, `components/notifications/` |
-| **E** | UI·검색·AI: 레이아웃, 검색, AI 요약·자연어 검색·할 일 추출 | `app/api/ai/` (+ `components/layout/` 은 팀장 협의 후) |
+| 담당 | 이름 | 역할 | 수정 가능한 폴더 |
+|---|---|---|---|
+| **A 팀장** | 윤석 | 인프라·스키마·통합·배포 | `supabase/`, `lib/supabase/`, `types/`, 설정 파일 전부 |
+| **B** | 계섭 | 메시지 코어: 송수신, Realtime, 멱등, 델타 동기화, 스레드, 무한스크롤 | `components/chat/` |
+| **C** | 서보 | 계정·채널·권한: 로그인, 채널·DM, 관리자 권한, RLS(설계) | `app/(auth)/`, `components/channel/` |
+| **D** | 문수정 | 실사용 기능: 첨부, 읽음, 미읽음 배지, 멘션 알림 | `components/attachments/`, `components/notifications/` |
+| **E** | 재문 | UI·검색·AI: 레이아웃, 검색, AI 요약·자연어 검색·할 일 추출 | `app/api/ai/`, `components/search/` (+ `components/layout/` 은 팀장 협의 후) |
 
+- 팀원별 Claude 프롬프트: `team-prompts/` 폴더
 - 담당 폴더 안에서는 자유롭게 파일을 만들고 나눠도 된다.
 - 다른 사람 컴포넌트는 **가져다 쓰기(import)만** 하고 내용은 고치지 않는다. 고칠 게 있으면 그 담당자에게 요청.
 - 화면에 내 컴포넌트를 끼우려면 `components/layout/` 의 해당 칸(Placeholder)을 바꿔야 한다 → 팀장 협의.

@@ -16,6 +16,20 @@
 
 ---
 
+## 팀
+
+| 담당 | 이름 | 역할 |
+|---|---|---|
+| A | 윤석 | 팀장 · 인프라 · 통합 · 배포 |
+| B | 계섭 | 메시지 코어 (송수신, 실시간, 스레드) |
+| C | 서보 | 계정 · 채널 · 권한 |
+| D | 문수정 | 첨부 · 읽음 · 미읽음 · 멘션 |
+| E | 재문 | UI · 검색 · AI |
+
+> 👉 팀원은 [`team-prompts/`](team-prompts/) 에서 자기 이름 파일을 열고 순서대로 Claude 에게 붙여넣으세요.
+
+---
+
 ## 팀원 최초 세팅 (처음 한 번만)
 
 ### 0. 준비물 설치
@@ -87,7 +101,7 @@ git checkout -b feature/내이름-기능이름
 ```
 app/
   (auth)/login/        C  로그인 페이지
-  api/ai/              E  AI API
+  api/ai/              E  AI API (서버)
   page.tsx             A  첫 화면 (레이아웃 셸)
 components/
   layout/              E  화면 뼈대 (팀장 협의)
@@ -95,8 +109,10 @@ components/
   channel/             C  채널·DM
   attachments/         D  첨부파일
   notifications/       D  읽음·배지·멘션
+  search/              E  검색·AI 결과 화면
 lib/supabase/          A  Supabase 연결
 types/                 A  DB 타입
 supabase/migrations/   A  DB 스키마 SQL
 DevelopDoc/            모두  제출용 개발 문서
+team-prompts/          모두  팀원별 Claude 프롬프트
 ```

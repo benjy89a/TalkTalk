@@ -131,7 +131,8 @@ attachments     (id uuid PK, message_id → messages, file_url, file_name)
 | `components/chat/` | B | 메시지·스레드 |
 | `app/(auth)/`, `components/channel/` | C | 로그인, 채널·DM |
 | `components/attachments/`, `components/notifications/` | D | 첨부, 읽음·배지·멘션 |
-| `app/api/ai/` | E | AI API |
+| `app/api/ai/` | E | AI API (서버) |
+| `components/search/` | E | 검색·AI 결과 화면 |
 
 ## 8. 환경변수
 
