@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI",
+    sans-serif;
+}
