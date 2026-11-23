@@ -29,8 +29,32 @@ export async function updateSession(request: NextRequest) {
   });
 
   // 이 호출이 만료된 토큰을 갱신한다. 지우지 말 것.
-  // (로그인 안 한 사용자를 /login 으로 보내는 처리는 C 가 필요할 때 팀장과 협의해 여기 추가)
-  await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims();
+  const loggedIn = !!data?.claims;
+
+  const { pathname } = request.nextUrl;
+  const isLoginPage = pathname === "/login" || pathname.startsWith("/login/");
+  // /api 는 화면이 아니라 데이터 요청이다. 각 API 가 직접 401 을 돌려주므로 여기서는 건드리지 않는다.
+  const isApi = pathname === "/api" || pathname.startsWith("/api/");
+
+  // 로그인 안 한 사용자 → 로그인 화면 (로그인 화면에 회원가입도 있다)
+  // 로그인한 사용자가 /login 에 오면 → 첫 화면
+  let target: string | null = null;
+  if (!loggedIn && !isLoginPage && !isApi) target = "/login";
+  else if (loggedIn && isLoginPage) target = "/";
+
+  if (target) {
+    const redirect = NextResponse.redirect(new URL(target, request.url));
+    // 갱신된 로그인 쿠키를 이동 응답에도 그대로 실어 보낸다 (안 그러면 로그인이 풀린다)
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    // 토큰을 갱신했을 때 Supabase 가 붙이는 "캐시 금지" 헤더도 같이 옮긴다.
+    // (response 의 나머지 헤더에는 Next 내부용 값이 섞여 있어 전부 복사하면 안 된다)
+    for (const key of ["cache-control", "expires", "pragma"]) {
+      const value = response.headers.get(key);
+      if (value) redirect.headers.set(key, value);
+    }
+    return redirect;
+  }
 
   return response;
 }
