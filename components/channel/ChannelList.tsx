@@ -8,6 +8,11 @@
 // 사용 예:
 //   <ChannelList selectedChannelId={channelId} onSelect={setChannelId} />
 //   채널을 새로 만들거나 참여한 뒤 목록을 다시 불러오려면 refreshKey 값을 바꿔 준다.
+//
+// 미읽음 굵게 (D-2 useUnread 와 연결):
+//   const { isUnread } = useUnread(channelId);
+//   <ChannelList selectedChannelId={channelId} onSelect={setChannelId} isUnread={isUnread} />
+//   isUnread 를 안 넘기면 굵게 표시 없이 그대로 동작한다.
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Channel } from "@/types/database";
@@ -18,12 +23,18 @@ type Props = {
   selectedChannelId: string | null;
   onSelect: (channelId: string) => void;
   refreshKey?: number;
+  isUnread?: (channelId: string) => boolean; // D 의 useUnread().isUnread 를 그대로 넘기면 된다
 };
 
 const rowClass =
   "flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-white/90 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e325c]";
 
-export default function ChannelList({ selectedChannelId, onSelect, refreshKey = 0 }: Props) {
+export default function ChannelList({
+  selectedChannelId,
+  onSelect,
+  refreshKey = 0,
+  isUnread,
+}: Props) {
   const [channels, setChannels] = useState<ChannelItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +105,7 @@ export default function ChannelList({ selectedChannelId, onSelect, refreshKey = 
       {channels.map((channel) => {
         const selected = channel.id === selectedChannelId;
         const isPrivate = channel.type === "private";
+        const unread = !selected && (isUnread?.(channel.id) ?? false);
         return (
           <li key={channel.id}>
             <button
@@ -105,8 +117,13 @@ export default function ChannelList({ selectedChannelId, onSelect, refreshKey = 
               <span aria-hidden="true" className="w-4 shrink-0 text-center text-white/60">
                 {isPrivate ? "🔒" : "#"}
               </span>
-              <span className="min-w-0 flex-1 truncate">{channel.name}</span>
+              <span
+                className={`min-w-0 flex-1 truncate ${unread ? "font-bold text-white" : ""}`}
+              >
+                {channel.name}
+              </span>
               {isPrivate && <span className="sr-only">(비공개 채널)</span>}
+              {unread && <span className="sr-only">(안 읽은 메시지 있음)</span>}
             </button>
           </li>
         );
