@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { passwordChangedMeta } from "@/components/channel/passwordPolicy";
 
 type Status = "checking" | "ready" | "invalid";
 
@@ -74,7 +75,11 @@ export default function ResetPasswordForm() {
 
     setLoading(true);
     try {
-      const { error } = await createClient().auth.updateUser({ password });
+      // 바꾼 날짜도 함께 저장 → 60일 뒤 다시 변경 안내
+      const { error } = await createClient().auth.updateUser({
+        password,
+        data: passwordChangedMeta(),
+      });
       if (error) {
         if (error.code === "same_password") {
           setError("지금 쓰는 비밀번호와 다른 비밀번호로 정해 주세요.");
