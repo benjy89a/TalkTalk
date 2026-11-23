@@ -28,6 +28,17 @@ export default function MessageInput({
 }: Props) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  // 입력한 글자를 "멘션 훅보다 먼저" 기억한다.
+  // 멘션 훅은 입력창에 직접 input 리스너를 붙여 커서 위치를 상태로 바꾸는데, 그 순간 화면이 다시 그려지면서
+  // 아직 새 글자를 모르는 입력창이 이전 값(빈 칸)으로 되돌아가 "글자가 안 써지는" 문제가 있었다.
+  // useLayoutEffect 는 훅의 useEffect 보다 먼저 실행되므로, 여기서 붙인 리스너가 먼저 불린다.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const sync = () => setText(el.value);
+    el.addEventListener("input", sync);
+    return () => el.removeEventListener("input", sync);
+  }, []);
   // @멘션 자동완성 (D) — 스레드 답글 입력창에도 자동 적용
   const mention = useMentionAutocomplete({ channelId, textareaRef: ref, text, setText });
 
@@ -40,7 +51,12 @@ export default function MessageInput({
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
+    // scrollHeight 에는 테두리(위아래 1px)가 빠져 있으므로 더해 준다 (안 그러면 2px 모자라 스크롤바가 생김)
+    const border = el.offsetHeight - el.clientHeight;
+    const wanted = el.scrollHeight + border;
+    el.style.height = `${Math.min(wanted, MAX_HEIGHT)}px`;
+    // 6줄 이하일 땐 스크롤바를 숨기고, 넘으면 입력창 안에서 스크롤
+    el.style.overflowY = wanted > MAX_HEIGHT ? "auto" : "hidden";
   }, [text]);
 
   function submit() {
