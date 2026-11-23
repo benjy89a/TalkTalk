@@ -7,10 +7,10 @@
 | B-1 메시지 목록 | `feature/gyeseop-message-list` | ✅ main 머지됨 (PR #2) |
 | B-2 메시지 전송 + 중복 방지 | `feature/gyeseop-message-send` (B-1 위에서 이어서) | ✅ main 머지됨 (PR #6) |
 | B-3 실시간 수신 + 카톡식 말풍선 | `feature/gyeseop-realtime` (B-2 위에서 이어서) | ✅ main 머지됨 (PR #5, 팀장님) |
-| B-4 델타 동기화 | `feature/gyeseop-delta-sync` (B-3 위에서 이어서) | PR #9 올림 · 머지 대기 |
-| 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | PR #9 에 포함 |
-| B-5 스레드(답글) | `feature/gyeseop-thread` (B-4 위에서 이어서) | 완료 · 로컬 확인 |
-| B-6 무한스크롤 | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | 완료 · 로컬 확인 |
+| B-4 델타 동기화 | `feature/gyeseop-delta-sync` (B-3 위에서 이어서) | ✅ main 머지됨 (PR #9) |
+| 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | ✅ main 머지됨 (PR #9) |
+| B-5 스레드(답글) | `feature/gyeseop-thread` (B-4 위에서 이어서) | ✅ main 머지됨 (PR #13) |
+| B-6 무한스크롤 (+ 맨 아래 잘림 수정) | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | PR 올림 · 머지 대기 |
 
 > ⚠️ 브랜치가 B-1 → … → B-5 → B-6 순서로 이어져 있어요. PR 도 **B-4 → B-5 → B-6 순서로, 앞의 것이 머지된 뒤** 올립니다.
 
@@ -181,4 +181,8 @@ import ThreadView from "@/components/chat/ThreadView";
 
 ## 다음 할 일
 
+- [ ] (CONTRACTS.md · D 요청) `MessageList`/`MessageItem` 에 첨부 표시 칸 `renderAttachments?(message)` 열기
+- [ ] (CONTRACTS.md · D 요청) `MessageInput` 에 입력창 아래 칸 `extras?: ReactNode` 열기
+- [ ] (CONTRACTS.md · E 요청 시) 검색 결과로 이동 `focusMessageId?: number`
+- [ ] 스레드 패널 연결 확인 — 팀장님이 `ThreadPanel` 에 `<ThreadView />` 연결하면 화면에서 확인
 - [ ] 대량 메시지 시연용 시드 스크립트 — 위치·담당 팀장님과 협의 필요
