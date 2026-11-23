@@ -5,10 +5,10 @@
 | 작업 단위 | 브랜치 | 상태 |
 |---|---|---|
 | B-1 메시지 목록 | `feature/gyeseop-message-list` | ✅ main 머지됨 (PR #2) |
-| B-2 메시지 전송 + 중복 방지 | `feature/gyeseop-message-send` (B-1 위에서 이어서) | PR #6 올림 · 머지 대기 |
-| B-3 실시간 수신 + 카톡식 말풍선 | `feature/gyeseop-realtime` (B-2 위에서 이어서) | 완료 · 로컬 확인 |
-| B-4 델타 동기화 | `feature/gyeseop-delta-sync` (B-3 위에서 이어서) | 완료 · 로컬 확인 |
-| 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | 완료 · 로컬 확인 |
+| B-2 메시지 전송 + 중복 방지 | `feature/gyeseop-message-send` (B-1 위에서 이어서) | ✅ main 머지됨 (PR #6) |
+| B-3 실시간 수신 + 카톡식 말풍선 | `feature/gyeseop-realtime` (B-2 위에서 이어서) | ✅ main 머지됨 (PR #5, 팀장님) |
+| B-4 델타 동기화 | `feature/gyeseop-delta-sync` (B-3 위에서 이어서) | PR #9 올림 · 머지 대기 |
+| 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | PR #9 에 포함 |
 | B-5 스레드(답글) | `feature/gyeseop-thread` (B-4 위에서 이어서) | 완료 · 로컬 확인 |
 
 > ⚠️ 브랜치가 B-1 → B-2 → B-3 → B-4 → B-5 순서로 이어져 있어요. PR 도 **B-1 → B-2 → B-3 → B-4 → B-5 순서로, 앞의 것이 머지된 뒤** 올립니다.
@@ -149,7 +149,7 @@ import ThreadView from "@/components/chat/ThreadView";
 
 ## 팀장님께 협의할 것
 
-1. **화면 연결**: `components/layout/MessageArea.tsx` 의 B Placeholder 두 칸, `ThreadPanel.tsx` 의 B 칸에 위 사용법대로 끼워주세요. (스레드 패널을 스레드가 열렸을 때만 보이게 하려면 `useOpenThread()` 로 열림 여부를 알 수 있어요)
+1. **화면 연결**: ✅ 메시지 목록·입력창은 팀장님이 연결해 주심 (PR #7). 남은 것: B-5 머지 후 `ThreadPanel.tsx` 의 B 칸에 `<ThreadView />`. (스레드 패널을 스레드가 열렸을 때만 보이게 하려면 `useOpenThread()` 로 열림 여부를 알 수 있어요)
 2. **메시지 모양**: 카톡처럼 내 메시지는 오른쪽 말풍선으로 바꿨어요. 3단 레이아웃은 그대로인데, Mattermost 방식(모두 왼쪽 정렬)과는 달라요. 팀 방향과 괜찮은지 봐주세요. (재문님 디자인 가이드와도 맞춰볼게요)
 3. **테스트 데이터**: 팀 Supabase 에 테스트 계정 2개(`gyeseop.test1/2@example.com`)와 #general 테스트 메시지가 있어요.
 
