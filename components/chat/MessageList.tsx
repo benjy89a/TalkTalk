@@ -11,6 +11,7 @@ import { CenterText, LostBanner, NewMessagesButton, RetryButton } from "./ChatBi
 import MessageRows from "./MessageRows";
 import { mergeWithOutbox, useOutbox, type DisplayMessage } from "./outbox";
 import { closeThreadIfNotIn, openThread, useOpenThread } from "./threads";
+import { MAX_RENDERED } from "./types";
 import { useChannelMessages } from "./useChannelMessages";
 import { useCurrentUserId } from "./useCurrentUserId";
 import { useStickToBottom } from "./useStickToBottom";
@@ -22,8 +23,18 @@ type Props = {
 };
 
 export default function MessageList({ channelId, renderAttachments, onOpenThread }: Props) {
-  const { messages: loaded, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder } =
-    useChannelMessages(channelId);
+  const {
+    messages: loaded,
+    replyStats,
+    status,
+    live,
+    reload,
+    hasMore,
+    loadingOlder,
+    loadOlder,
+    capped,
+    trimOld,
+  } = useChannelMessages(channelId);
   const outbox = useOutbox();
   const myId = useCurrentUserId();
   const openedThread = useOpenThread();
@@ -49,8 +60,9 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
   }, [channelId]);
 
   // (B-6) 맨 위 근처에 오면 이전 50개 불러오기
-  const canLoadOlder = status === "ready" && hasMore && !loadingOlder;
-  const { scrollRef, contentRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
+  // 대량 메시지: 최대 개수(500)까지 쌓였으면 더 불러오지 않는다
+  const canLoadOlder = status === "ready" && hasMore && !loadingOlder && !capped;
+  const { scrollRef, contentRef, onScroll, scrollToBottom, unseen, atBottom } = useStickToBottom(
     messages,
     status === "ready",
     channelId,
@@ -62,6 +74,12 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
     const el = scrollRef.current;
     if (canLoadOlder && el && el.scrollHeight <= el.clientHeight) loadOlder();
   }, [canLoadOlder, loaded.length, loadOlder, scrollRef]);
+
+  // 대량 메시지: 새 메시지가 계속 와서 500개를 넘으면, 맨 아래를 보고 있을 때 오래된 것부터 정리
+  // (위쪽을 읽는 중엔 빼지 않는다 — 빼면 읽던 화면이 튀므로)
+  useEffect(() => {
+    if (atBottom && loaded.length > MAX_RENDERED) trimOld();
+  }, [atBottom, loaded.length, trimOld]);
 
   if (status === "loading") {
     return <CenterText>메시지를 불러오는 중…</CenterText>;
@@ -87,7 +105,13 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
           <div ref={contentRef}>
             {/* (B-6) 맨 위: 불러오는 중 / 더 없으면 채널 시작 안내 */}
             <div className="py-2 text-center text-xs leading-5 text-gray-500">
-              {loadingOlder ? "이전 메시지를 불러오는 중…" : hasMore ? " " : "이 채널의 첫 메시지예요 👋"}
+              {loadingOlder
+                ? "이전 메시지를 불러오는 중…"
+                : capped
+                  ? `최근 ${MAX_RENDERED}개까지 보여드려요. 더 이전 메시지는 검색으로 찾아보세요 🔍`
+                  : hasMore
+                    ? " "
+                    : "이 채널의 첫 메시지예요 👋"}
             </div>
             <MessageRows
               messages={messages}

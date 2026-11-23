@@ -95,5 +95,5 @@ export function useStickToBottom(
   const seenIndex = seenKey ? messages.findIndex((m) => m.client_id === seenKey) : -1;
   const unseen = atBottom || seenIndex < 0 ? 0 : messages.length - 1 - seenIndex;
 
-  return { scrollRef, contentRef, onScroll, scrollToBottom, unseen };
+  return { scrollRef, contentRef, onScroll, scrollToBottom, unseen, atBottom };
 }

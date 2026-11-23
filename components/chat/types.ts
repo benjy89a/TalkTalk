@@ -12,3 +12,11 @@ export const MESSAGE_SELECT = "*, profiles(name, avatar_url)" as const;
 
 // 한 번에 불러오는 메시지 개수 (무한스크롤 B-6 에서도 같은 값 사용)
 export const PAGE_SIZE = 50;
+
+// 화면에 쌓아둘 최대 메시지 수 (대량 메시지 성능)
+// 1만 건 채널에서 측정: 900개까지 부드러움, 1,500개는 50개 더 불러올 때마다 3~4초 + 화면 0.9초 멈춤
+// → 느린 노트북까지 생각해 500개로 제한. 넘기면 위로 더 불러오지 않고 "검색으로 찾아보세요" 안내
+export const MAX_RENDERED = 500;
+
+// 재연결 때 놓친 메시지가 이보다 많으면 하나씩 이어 붙이지 않고 최신 50개로 새로 불러온다
+export const CATCH_UP_LIMIT = 200;
