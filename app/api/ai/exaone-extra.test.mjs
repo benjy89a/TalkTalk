@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { createExaoneExtra, EXTRACT_TIMEOUT_MS, SEARCH_TIMEOUT_MS, seoulCalendar } from "./extra.ts";
+import { SUMMARY_TIMEOUT_MS } from "./summarize/handler.ts";
 
 const TEST_CREDENTIAL = "unit-test-only";
 const context = { referenceTime: "2026-11-23T01:00:00Z", timeZone: "Asia/Seoul" };
@@ -71,7 +72,7 @@ test("할 일은 작성 시각의 서울 날짜·근거 ID를 전송하고 추�
   assert.deepEqual(await adapter.extract(source, context, signal()), tasks);
 });
 
-test("기본 대기 제한은 검색 25초·추출 4분, 테스트 주입값이 있으면 우선", async (t) => {
+test("기본 대기 제한은 검색·추출 모두 4분, 테스트 주입값이 있으면 우선", async (t) => {
   const limits = [];
   t.mock.method(AbortSignal, "timeout", (ms) => { limits.push(ms); return signal(); });
   let calls = 0;
@@ -82,8 +83,10 @@ test("기본 대기 제한은 검색 25초·추출 4분, 테스트 주입값이 
   await custom.extract(source, context, signal());
   assert.deepEqual(limits, [SEARCH_TIMEOUT_MS, EXTRACT_TIMEOUT_MS, 17]);
   // 무료 API의 느린 생성 속도와 배포 함수 한도(300초) 사이에 두고, 예전 45초보다 늘렸는지 고정한다.
-  assert.equal(SEARCH_TIMEOUT_MS, 25000);
+  assert.equal(SEARCH_TIMEOUT_MS, 240000);
   assert.equal(EXTRACT_TIMEOUT_MS, 240000);
+  assert.equal(SUMMARY_TIMEOUT_MS, SEARCH_TIMEOUT_MS);
+  assert.equal(SUMMARY_TIMEOUT_MS, EXTRACT_TIMEOUT_MS);
   assert.ok(EXTRACT_TIMEOUT_MS < 300000);
 });
 

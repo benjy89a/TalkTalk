@@ -65,6 +65,7 @@ npm run build
 - `AiToolsBar.tsx`: `channelId: string | null`을 받는 요약 버튼·범위 선택(최근 10/25/50개)·로딩·취소·안내·결과 표시 컴포넌트입니다.
 - `summaryClient.ts`: 로그인 쿠키와 함께 내부 `/api/ai/summarize`에 `{ channelId, limit }`을 전달합니다. 대화 원문·외부 AI 키를 브라우저에서 전달하지 않습니다.
 - `summaryClient.test.mjs`: 테스트용 HTTP 응답으로 클라이언트 요청·오류·취소를 검사합니다.
+- 요약·AI 검색·할 일 추출 응답 대기는 모두 최대 240초(4분)이며 로딩 중 취소할 수 있습니다. `AI_TIMEOUT`(앱/업체 응답 제한)과 요약의 `SERVER_TIMEOUT`(표준 앱 오류 JSON이 없는 HTTP 504)을 구분해 안내합니다. HTTP 504만으로 배포 플랫폼이 원인이라고 확정하지는 않습니다. 요청/응답 계약과 자동 재시도 없음은 유지합니다.
 
 ```tsx
 import AiToolsBar from "@/components/search/AiToolsBar";

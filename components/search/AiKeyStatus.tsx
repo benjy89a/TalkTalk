@@ -61,7 +61,7 @@ export default function AiKeyStatus() {
           연결 테스트
         </button>
         <p className="text-xs text-gray-600">버튼을 누를 때만 한 번 호출합니다. 자동 호출·재시도는 없습니다.</p>
-        {probe.status === "running" && <p role="status" className="text-gray-600">연결을 확인하는 중… (최대 30초)</p>}
+        {probe.status === "running" && <p role="status" className="text-gray-600">연결을 확인하는 중… (최대 4분)</p>}
         {probe.status === "done" && (probe.result.ok
           ? <p role="status">✅ 연결 성공 · {probe.result.ms}ms</p>
           : <p role="alert">❌ {probe.result.message}</p>)}

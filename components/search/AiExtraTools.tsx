@@ -92,7 +92,7 @@ function ChannelExtraTools({ channelId }: Props) {
         )}
         {busy && <button type="button" onClick={cancel} className="rounded-md px-3 py-2 text-gray-600 focus-visible:ring-2 focus-visible:ring-[#1e325c]">취소</button>}
       </div>
-      {state.status === "loading" && <p role="status" className="text-gray-600">{state.kind === "search" ? "질문을 해석하고 현재 채널에서 검색하고 있습니다." : "대화에서 할 일과 원문 근거를 확인하고 있습니다. 무료 API 특성상 최대 4분 정도 걸릴 수 있습니다."}</p>}
+      {state.status === "loading" && <p role="status" className="text-gray-600">{state.kind === "search" ? "질문을 해석하고 현재 채널에서 검색하고 있습니다." : "대화에서 할 일과 원문 근거를 확인하고 있습니다."} AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
       {state.status === "error" && <p role="alert" className="rounded-md border border-gray-200 bg-gray-50 p-3 leading-6">{state.message}</p>}
       {state.status === "search" && (
         <div className="space-y-2">

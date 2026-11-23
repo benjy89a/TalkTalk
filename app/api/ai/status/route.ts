@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createExaoneSummary, EXAONE_MODEL } from "../summarize/handler";
 import { handleStatusGet, handleStatusPost, type StatusConfig } from "./handler";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function config(): StatusConfig {
   return { provider: "EXAONE", model: EXAONE_MODEL, keyConfigured: !!process.env.EXAONE_API_KEY };
@@ -15,6 +15,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const generate = createExaoneSummary({ apiKey: process.env.EXAONE_API_KEY, timeoutMs: 30000 });
+  const generate = createExaoneSummary({ apiKey: process.env.EXAONE_API_KEY });
   return handleStatusPost(request, createClient, config(), (signal) => generate(["연결 테스트입니다."], signal));
 }
