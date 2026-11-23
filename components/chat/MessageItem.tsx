@@ -4,6 +4,8 @@
 // first : 같은 사람이 5분 안에 연달아 보낸 묶음의 첫 메시지 → 상대방은 아바타·이름 표시
 // last  : 묶음의 마지막 메시지 → 말풍선 옆에 시간 표시
 // status: "sending"(보내는 중, 흐리게) / "failed"(실패, 재전송·삭제) / 없음(저장됨)
+// thread: 답글 수·마지막 답글 시간 (B-5). 답글이 있으면 말풍선 아래 "답글 n개 · 시간",
+//         없으면 마우스를 올렸을 때만 말풍선 옆에 "답글" 버튼
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
 
@@ -12,11 +14,14 @@ type Props = {
   mine: boolean;
   first: boolean;
   last: boolean;
+  thread?: { count: number; lastAt: string };
+  onOpenThread?: () => void;
+  active?: boolean; // 지금 스레드 패널에 열린 메시지
 };
 
 const BUBBLE = "min-w-0 rounded-2xl px-3 py-1.5 text-sm leading-6 whitespace-pre-wrap break-words";
 
-export default function MessageItem({ message, mine, first, last }: Props) {
+export default function MessageItem({ message, mine, first, last, thread, onOpenThread, active }: Props) {
   const name = message.profiles?.name || "알 수 없음";
   const { status } = message;
 
@@ -40,10 +45,36 @@ export default function MessageItem({ message, mine, first, last }: Props) {
       </time>
     ) : null;
 
+  const hasReplies = !!thread && thread.count > 0;
+  // 답글이 없을 때: 마우스를 올리면 말풍선 옆에 나타나는 버튼 (가로 공간만 써서 줄 간격이 안 벌어짐)
+  const replyButton =
+    onOpenThread && !hasReplies ? (
+      <button
+        type="button"
+        onClick={onOpenThread}
+        className="invisible shrink-0 rounded px-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible hover:text-[#1e325c] focus-visible:visible"
+      >
+        답글
+      </button>
+    ) : null;
+  // 답글이 있을 때: 말풍선 아래 "답글 n개 · 마지막 답글 시간"
+  const replyLink =
+    onOpenThread && hasReplies ? (
+      <button
+        type="button"
+        onClick={onOpenThread}
+        className="mt-0.5 text-xs leading-5 font-medium text-blue-700 hover:underline"
+      >
+        답글 {thread.count}개 · {formatTime(thread.lastAt)}
+      </button>
+    ) : null;
+  const rowBg = active ? "bg-blue-50" : "";
+
   if (mine) {
     return (
-      <div className={`flex justify-end px-2 ${first ? "mt-3" : "mt-1"}`}>
+      <div className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
         <div className="flex max-w-[75%] items-end gap-1.5">
+          {replyButton}
           {side}
           <p
             className={`${BUBBLE} bg-[#1e325c] text-white ${status ? "opacity-60" : ""}`}
@@ -52,12 +83,13 @@ export default function MessageItem({ message, mine, first, last }: Props) {
             {message.content}
           </p>
         </div>
+        {replyLink}
       </div>
     );
   }
 
   return (
-    <div className={`flex gap-2 px-2 ${first ? "mt-3" : "mt-1"}`}>
+    <div className={`group flex gap-2 rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
       {/* 왼쪽: 묶음 첫 메시지에만 아바타, 나머지는 같은 너비의 빈칸 */}
       <div className="w-9 shrink-0">
         {first && (
@@ -74,7 +106,9 @@ export default function MessageItem({ message, mine, first, last }: Props) {
         <div className="flex max-w-[75%] items-end gap-1.5">
           <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{message.content}</p>
           {side}
+          {replyButton}
         </div>
+        {replyLink}
       </div>
     </div>
   );
