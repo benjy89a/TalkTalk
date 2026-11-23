@@ -23,7 +23,7 @@ import { renderMessageAttachments } from "@/components/attachments/AttachmentLis
 ```
 
 - 이미지(png, jpg, gif, webp, bmp, avif)는 미리보기, 누르면 새 탭에서 크게 봅니다.
-- 그 외 파일은 파일명 + **다운로드** 버튼 (원래 파일 이름으로 저장됨).
+- 그 외 파일은 파일명 + **다운로드** 버튼. 파일을 받아 온 뒤 브라우저에서 원래 이름을 붙여 저장하므로 **한글 이름도 깨지지 않습니다**.
 - 메시지 50개가 동시에 그려져도 DB 요청은 한 번으로 모아서 보냅니다.
 
 ### 직접 쓰는 함수
