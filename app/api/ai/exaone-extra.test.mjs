@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { createExaoneExtra, seoulCalendar } from "./extra.ts";
+import { createExaoneExtra, EXTRACT_TIMEOUT_MS, SEARCH_TIMEOUT_MS, seoulCalendar } from "./extra.ts";
 
 const TEST_CREDENTIAL = "unit-test-only";
 const context = { referenceTime: "2026-11-23T01:00:00Z", timeZone: "Asia/Seoul" };
@@ -71,7 +71,7 @@ test("할 일은 작성 시각의 서울 날짜·근거 ID를 전송하고 추�
   assert.deepEqual(await adapter.extract(source, context, signal()), tasks);
 });
 
-test("기본 대기 제한은 검색 25초·추출 45초, 테스트 주입값이 있으면 우선", async (t) => {
+test("기본 대기 제한은 검색 25초·추출 4분, 테스트 주입값이 있으면 우선", async (t) => {
   const limits = [];
   t.mock.method(AbortSignal, "timeout", (ms) => { limits.push(ms); return signal(); });
   let calls = 0;
@@ -80,7 +80,11 @@ test("기본 대기 제한은 검색 25초·추출 45초, 테스트 주입값이
   await adapter.extract(source, context, signal());
   const custom = createExaoneExtra({ apiKey: TEST_CREDENTIAL, timeoutMs: 17, fetcher: async () => completion(tasks) });
   await custom.extract(source, context, signal());
-  assert.deepEqual(limits, [25000, 45000, 17]);
+  assert.deepEqual(limits, [SEARCH_TIMEOUT_MS, EXTRACT_TIMEOUT_MS, 17]);
+  // 무료 API의 느린 생성 속도와 배포 함수 한도(300초) 사이에 두고, 예전 45초보다 늘렸는지 고정한다.
+  assert.equal(SEARCH_TIMEOUT_MS, 25000);
+  assert.equal(EXTRACT_TIMEOUT_MS, 240000);
+  assert.ok(EXTRACT_TIMEOUT_MS < 300000);
 });
 
 test("잘못된 키·입력은 실제 요청 전 거절", async () => {

@@ -4,6 +4,12 @@ import type { Database, Message } from "@/types/database";
 export const EXTRA_MAX_BODY_BYTES = 128 * 1024;
 export const EXTRA_MAX_TEXT_LENGTH = 20000;
 
+// 무료 EXAONE API는 출력 속도가 느려(공개 측정 약 20토큰/초) max_tokens 4,096을
+// 모두 쓰면 생성에만 약 205초가 걸릴 수 있다. 추출은 그 최악의 경우를 덮도록 두고,
+// 배포 함수 실행 한도(현재 Vercel 기본/최대 300초)보다는 짧게 잡는다.
+export const SEARCH_TIMEOUT_MS = 25000;
+export const EXTRACT_TIMEOUT_MS = 240000;
+
 type ClientFactory = () => Promise<SupabaseClient<Database>>;
 type Context = { referenceTime: string; timeZone: "Asia/Seoul" };
 export type TaskSource = Pick<Message, "id" | "content" | "created_at" | "parent_id">;
@@ -167,7 +173,7 @@ export function seoulCalendar(referenceTime: string) {
 export function createExaoneExtra({ apiKey, fetcher = fetch, timeoutMs }: ExaoneExtraOptions): {
   interpret: SearchInterpreter; extract: TaskExtractor;
 } {
-  async function requestJson(system: string, data: unknown, signal: AbortSignal, defaultTimeoutMs = 25000): Promise<unknown> {
+  async function requestJson(system: string, data: unknown, signal: AbortSignal, defaultTimeoutMs = SEARCH_TIMEOUT_MS): Promise<unknown> {
     signal.throwIfAborted();
     if (!apiKey?.trim() || /[\r\n]/.test(apiKey)) {
       throw new ExtraError(503, "AI_NOT_CONFIGURED", "서버의 EXAONE_API_KEY 설정을 확인해 주세요.");
@@ -236,7 +242,7 @@ export function createExaoneExtra({ apiKey, fetcher = fetch, timeoutMs }: Exaone
         '대화에서 실행할 후속 작업만 최대 20개 추출하여 {"tasks":[{"content":string,"assignee":string|null,"dueDate":"YYYY-MM-DD"|null,"messageIds":number[]}]}로 반환한다. tasks 외의 최상위 필드는 금지한다. 내용은 1000자 이하이고 담당자는 실제 근거 본문에 등장하는 이름만 쓴다. 내가/제가 같은 대명사로 신원을 추측하거나 이름을 만들지 말고 불명확하면 null이다. 기한은 확실한 날짜만 쓴다. 내일/모레 등 상대 기한은 실행 시각이 아니라 해당 근거 메시지의 created_at을 서울 시간으로 해석한 dateInSeoul 기준이며 메시지에 다른 명시 날짜가 있으면 그것을 우선한다. 연도/날짜가 모호하면 null이다. messageIds는 제공된 실제 근거 ID만 1~10개다. 인사·이미 완료된 일·불확실한 제안은 할 일로 만들지 않는다. 명확한 할 일이 없으면 tasks는 빈 배열이다. 업무를 저장하거나 사람에게 배정했다고 말하지 않는다.',
         { ...context, messages: messages.map((message) => ({
           ...message, dateInSeoul: new Date(Date.parse(message.created_at) + 9 * 3600000).toISOString().slice(0, 10),
-        })) }, signal, 45000,
+        })) }, signal, EXTRACT_TIMEOUT_MS,
       );
       return { tasks: validateTasks(value, messages) };
     },
