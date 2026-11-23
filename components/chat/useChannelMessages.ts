@@ -5,7 +5,7 @@
 // B-4: 델타 동기화 — 다시 연결되면 "마지막으로 받은 id 이후" 메시지만 받아와 이어 붙인다
 //      (실시간 재연결 / 탭으로 돌아옴 / 와이파이 다시 켜짐)
 // B-5: 원본 메시지마다 답글 수 · 마지막 답글 시간 (답글 자체는 본문에 안 보여준다)
-// (B-6 무한스크롤은 이 파일에 이어서 붙인다)
+// B-6: 무한스크롤 — 맨 위로 올리면 "가장 오래된 id 보다 작은" 메시지 50개를 더 불러온다
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
@@ -46,6 +46,14 @@ export function useChannelMessages(channelId: string) {
   const live: LiveStatus = online ? subscribed : "lost";
   // 다시 시도 버튼을 누르면 이 숫자를 올려서 아래 useEffect 를 다시 실행시킨다
   const [reloadKey, setReloadKey] = useState(0);
+  // 무한스크롤 (B-6): 더 오래된 메시지가 남아 있는지 / 지금 불러오는 중인지
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // 답글을 원본 메시지별로 센다 (이미 센 답글은 건너뜀)
   const addReplies = useCallback((rows: ReplyRow[]) => {
@@ -66,6 +74,25 @@ export function useChannelMessages(channelId: string) {
     });
   }, []);
 
+  // 원본 메시지들에 달린 답글을 세기 (처음 불러올 때 · 이전 메시지 불러올 때)
+  const loadReplyStats = useCallback(
+    async (roots: ChatMessage[], isCancelled: () => boolean) => {
+      if (roots.length === 0) return;
+      const { data: replies, error } = await createClient()
+        .from("messages")
+        .select("id, parent_id, created_at")
+        .eq("channel_id", channelId)
+        .in("parent_id", roots.map((m) => m.id));
+      if (isCancelled()) return;
+      if (error) console.error("[chat] 답글 수 불러오기 실패", error);
+      else {
+        rememberLastId(channelId, replies);
+        addReplies(replies);
+      }
+    },
+    [channelId, addReplies],
+  );
+
   // ---- 처음 불러오기 (최근 50개 + 그 메시지들의 답글 수) ----
   useEffect(() => {
     let cancelled = false; // 채널이 바뀌면 이전 요청의 결과는 버린다
@@ -75,6 +102,7 @@ export function useChannelMessages(channelId: string) {
       setStatus("loading");
       setMessages([]);
       setReplyStats({});
+      setHasMore(false);
       seenReplyIds.current = new Set();
 
       // 최근 50개 = id 큰 순으로 50개 → 화면에는 오래된 순으로 보여준다
@@ -96,29 +124,47 @@ export function useChannelMessages(channelId: string) {
       // 불러오는 동안 실시간으로 먼저 도착한 메시지가 있을 수 있으니 덮어쓰지 않고 합친다
       rememberLastId(channelId, roots);
       setMessages((prev) => mergeById(prev, roots));
+      setHasMore(roots.length === PAGE_SIZE); // 50개를 꽉 채워 받았으면 더 있을 수 있음
       setStatus("ready");
 
       // 답글 수 (B-5): 화면에 있는 원본 메시지들의 답글만 id·시간만 가볍게 가져와 센다
-      if (roots.length > 0) {
-        const { data: replies, error: rErr } = await supabase
-          .from("messages")
-          .select("id, parent_id, created_at")
-          .eq("channel_id", channelId)
-          .in("parent_id", roots.map((m) => m.id));
-        if (cancelled) return;
-        if (rErr) console.error("[chat] 답글 수 불러오기 실패", rErr);
-        else {
-          rememberLastId(channelId, replies);
-          addReplies(replies);
-        }
-      }
+      await loadReplyStats(roots, () => cancelled);
     }
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [channelId, reloadKey, addReplies]);
+  }, [channelId, reloadKey, loadReplyStats]);
+
+  // ---- 이전 메시지 50개 더 불러오기 (B-6 무한스크롤) ----
+  const loadOlder = useCallback(async () => {
+    const oldest = messagesRef.current[0];
+    if (!oldest || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      // TECH_SPEC 2-2: .lt("id", oldestId).order("id", { ascending: false }).limit(50)
+      const { data, error } = await createClient()
+        .from("messages")
+        .select(MESSAGE_SELECT)
+        .eq("channel_id", channelId)
+        .is("parent_id", null)
+        .lt("id", oldest.id)
+        .order("id", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (error) throw error;
+      const rows = data as ChatMessage[];
+      setMessages((prev) => mergeById(prev, rows));
+      setHasMore(rows.length === PAGE_SIZE);
+      await loadReplyStats(rows, () => false);
+    } catch (err) {
+      console.error("[chat] 이전 메시지 불러오기 실패", err);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [channelId, loadReplyStats]);
 
   // 받은 행을 본문 메시지 / 답글로 나눠 반영
   const applyRows = useCallback(
@@ -233,5 +279,5 @@ export function useChannelMessages(channelId: string) {
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
-  return { messages, replyStats, status, live, reload };
+  return { messages, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder };
 }
