@@ -14,10 +14,27 @@ type SummaryState =
 
 export default function AiToolsBar({ channelId }: Props) {
   // 채널 변경 시 이전 채널의 결과·요청 상태를 함께 초기화한다.
-  return <div className="space-y-4">
-    <ChannelSummary key={channelId ?? "no-channel"} channelId={channelId} />
-    <AiExtraTools channelId={channelId} />
-  </div>;
+  // 채팅 영역을 밀어내지 않도록 평소에는 버튼 한 줄만 보이고,
+  // 열면 입력창 위에 떠 있는 패널(최대 높이 제한·스크롤)로 보여 준다. 닫아도 결과는 유지된다.
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative" onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); } }}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
+        className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">
+        ✨ AI 도구 {open ? "▾" : "▴"}
+      </button>
+      <div role="region" aria-label="AI 도구" hidden={!open}
+        className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[55vh] space-y-4 overflow-y-auto rounded-md border border-gray-200 bg-white p-4 shadow-lg">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">AI 도구</h2>
+          <button type="button" onClick={() => setOpen(false)} aria-label="AI 도구 닫기"
+            className="rounded-md px-2 py-1 text-gray-600 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#1e325c]">✕ 닫기</button>
+        </div>
+        <ChannelSummary key={channelId ?? "no-channel"} channelId={channelId} />
+        <AiExtraTools channelId={channelId} />
+      </div>
+    </div>
+  );
 }
 
 function ChannelSummary({ channelId }: Props) {
@@ -102,7 +119,7 @@ function ChannelSummary({ channelId }: Props) {
         </p>
       )}
       {state.status === "success" && (
-        <div role="status" className="rounded-md border border-gray-200 bg-gray-50 p-4">
+        <div role="status" className="max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-4">
           <h3 className="font-semibold">대화 요약</h3>
           <p className="mt-2 whitespace-pre-wrap break-words leading-6">{state.summary}</p>
           <p className="mt-2 text-xs text-gray-600">AI 결과는 틀릴 수 있습니다. 원문 대화를 함께 확인해 주세요.</p>
