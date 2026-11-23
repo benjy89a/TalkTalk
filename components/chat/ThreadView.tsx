@@ -15,6 +15,7 @@ import { MAX_RENDERED } from "./types";
 import { useCurrentUserId } from "./useCurrentUserId";
 import { useStickToBottom } from "./useStickToBottom";
 import { useThreadMessages } from "./useThreadMessages";
+import { summarize, toggleReaction, useReactions } from "./useReactions";
 
 export default function ThreadView() {
   const opened = useOpenThread();
@@ -66,6 +67,16 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     };
   }, []);
 
+  // 이모지 반응 (원본 + 저장된 답글)
+  const reactionIds = useMemo(
+    () => [...(root ? [root.id] : []), ...replies.filter((m) => !m.status).map((m) => m.id)],
+    [root, replies],
+  );
+  const reactions = useReactions(channelId, reactionIds);
+  const onReact = (messageId: number, emoji: string, alreadyMine: boolean) => {
+    if (myId) toggleReaction(messageId, emoji, myId, alreadyMine);
+  };
+
   const { scrollRef, contentRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
     replies,
     status === "ready",
@@ -105,7 +116,15 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
           <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
             <div ref={contentRef}>
               {/* 원본 메시지 */}
-              <MessageItem message={root} mine={root.user_id === myId} first last wide />
+              <MessageItem
+                message={root}
+                mine={root.user_id === myId}
+                first
+                last
+                wide
+                reactions={summarize(reactions[root.id], myId)}
+                onReact={(emoji, mine) => onReact(root.id, emoji, mine)}
+              />
 
               {/* 구분선 */}
               <div className="my-3 flex items-center gap-3" role="separator">
@@ -124,7 +143,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               )}
 
               {/* 답글 목록 */}
-              <MessageRows messages={replies} myId={myId} wide />
+              <MessageRows messages={replies} myId={myId} wide reactions={reactions} onReact={onReact} />
             </div>
           </div>
           <NewMessagesButton count={unseen} onClick={scrollToBottom} />

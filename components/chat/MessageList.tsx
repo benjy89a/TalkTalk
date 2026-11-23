@@ -14,6 +14,7 @@ import { closeThreadIfNotIn, openThread, useOpenThread } from "./threads";
 import { MAX_RENDERED } from "./types";
 import { useChannelMessages } from "./useChannelMessages";
 import { useCurrentUserId } from "./useCurrentUserId";
+import { toggleReaction, useReactions } from "./useReactions";
 import { useStickToBottom } from "./useStickToBottom";
 
 type Props = {
@@ -54,6 +55,13 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
     return null;
   }, [messages]);
   useMarkAsRead(channelId, lastSavedId);
+
+  // 이모지 반응 (저장된 메시지만)
+  const savedIds = useMemo(() => messages.filter((m) => !m.status).map((m) => m.id), [messages]);
+  const reactions = useReactions(channelId, savedIds);
+  const onReact = (messageId: number, emoji: string, alreadyMine: boolean) => {
+    if (myId) toggleReaction(messageId, emoji, myId, alreadyMine);
+  };
 
   // 다른 채널로 옮기면 열려 있던 (이전 채널의) 스레드는 닫는다
   useEffect(() => {
@@ -126,6 +134,8 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
               }}
               activeRootId={openedThread?.channelId === channelId ? openedThread.rootId : null}
               renderAttachments={renderAttachments}
+              reactions={reactions}
+              onReact={onReact}
             />
           </div>
         </div>

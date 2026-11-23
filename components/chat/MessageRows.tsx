@@ -6,6 +6,7 @@ import MessageItem from "./MessageItem";
 import { formatDateDivider, isGroupedWith, isSameDay } from "./format";
 import type { DisplayMessage } from "./outbox";
 import type { ReplyStats } from "./useChannelMessages";
+import { summarize, type ReactionMap } from "./useReactions";
 
 type Props = {
   messages: DisplayMessage[];
@@ -15,6 +16,8 @@ type Props = {
   activeRootId?: number | null; // 지금 스레드 패널에 열린 원본 메시지 (살짝 강조)
   renderAttachments?: (message: DisplayMessage) => ReactNode; // 말풍선 아래 첨부 칸 (D)
   wide?: boolean; // 좁은 스레드 패널용 넓은 말풍선
+  reactions?: ReactionMap; // 이모지 반응 (메시지 id → 반응들)
+  onReact?: (messageId: number, emoji: string, alreadyMine: boolean) => void;
 };
 
 export default function MessageRows({
@@ -25,6 +28,8 @@ export default function MessageRows({
   activeRootId,
   renderAttachments,
   wide,
+  reactions,
+  onReact,
 }: Props) {
   return (
     <>
@@ -46,6 +51,8 @@ export default function MessageRows({
               active={activeRootId === m.id}
               renderAttachments={renderAttachments}
               wide={wide}
+              reactions={reactions ? summarize(reactions[m.id], myId) : undefined}
+              onReact={onReact && !m.status ? (emoji, mine) => onReact(m.id, emoji, mine) : undefined}
             />
           </Fragment>
         );
