@@ -187,7 +187,12 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
         .eq("channel_id", selectedId)
         .eq("user_id", myId)
         .maybeSingle();
-      if (cancelled || data) return; // 아직 멤버면 그대로
+      if (cancelled) return;
+      if (data) {
+        // 아직 멤버면 그대로. 채널 이름이 바뀌었을 수 있으니 헤더 이름만 다시 읽는다
+        fillTitle(selectedId, myId);
+        return;
+      }
 
       const pick = await pickDefaultChannel(myId, null);
       if (cancelled) return;
