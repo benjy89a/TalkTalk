@@ -208,6 +208,38 @@ export type Database = {
           },
         ];
       };
+      reactions: {
+        Row: {
+          message_id: number;
+          user_id: string;
+          emoji: string;
+          channel_id: string;
+          created_at: string;
+        };
+        Insert: {
+          message_id: number;
+          user_id?: string; // 비우면 DB 가 auth.uid() 로 채움
+          emoji: string;
+          channel_id?: string; // 비우면 트리거가 메시지의 채널로 채움
+          created_at?: string;
+        };
+        Update: {
+          message_id?: number;
+          user_id?: string;
+          emoji?: string;
+          channel_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reactions_message_id_fkey";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "messages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -255,5 +287,6 @@ export type ChannelMember = Tables["channel_members"]["Row"];
 export type Message = Tables["messages"]["Row"];
 export type Attachment = Tables["attachments"]["Row"];
 export type AppAdmin = Tables["app_admins"]["Row"];
+export type Reaction = Tables["reactions"]["Row"];
 
 export type NewMessage = Tables["messages"]["Insert"];
