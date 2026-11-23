@@ -70,6 +70,46 @@ export async function inviteMember(supabase: Supabase, channelId: string, userId
   if (error) throw error;
 }
 
+// 서비스 관리자 목록 (app_admins 는 로그인한 사람 누구나 읽을 수 있다)
+export async function fetchAppAdminIds(supabase: Supabase): Promise<Set<string>> {
+  const { data, error } = await supabase.from("app_admins").select("user_id");
+  if (error) throw error;
+  return new Set((data ?? []).map((a) => a.user_id));
+}
+
+// 역할 바꾸기: 관리자 지정('admin') / 해제('member')
+// RLS 로 막히면 에러 없이 "0줄 수정"으로 끝난다 → 바뀐 줄 수로 확인.
+// 권한 없이 역할을 바꾸려 하면 DB 트리거(guard_member_role)가 에러를 낸다.
+export async function setMemberRole(
+  supabase: Supabase,
+  channelId: string,
+  userId: string,
+  role: MemberRole,
+) {
+  const { data, error } = await supabase
+    .from("channel_members")
+    .update({ role })
+    .eq("channel_id", channelId)
+    .eq("user_id", userId)
+    .select("user_id");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new NotAllowedError();
+}
+
+// 채널 이름 바꾸기 (같은 이름이 있으면 23505)
+export async function renameChannel(supabase: Supabase, channelId: string, name: string) {
+  const { data, error } = await supabase.from("channels").update({ name }).eq("id", channelId).select("id");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new NotAllowedError();
+}
+
+// 채널 삭제 (메시지·멤버 기록도 함께 지워짐. #general 은 DB 가 막는다 → 0줄)
+export async function deleteChannel(supabase: Supabase, channelId: string) {
+  const { data, error } = await supabase.from("channels").delete().eq("id", channelId).select("id");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new NotAllowedError();
+}
+
 // 내보내기: 행을 지운다.
 // 주의: RLS 로 막힌 delete 는 에러 없이 "0줄 삭제"로 끝난다 → 지워진 줄 수를 확인해서 막힘을 알아낸다.
 export async function removeMember(supabase: Supabase, channelId: string, userId: string) {
