@@ -43,7 +43,8 @@ const { isUnread, refresh } = useUnread(activeChannelId);
 
 - `isUnread(channelId)`: 안 읽은 메시지가 있으면 `true`. `unread` 에는 `{ 채널id: true/false }` 가 통째로 들어 있습니다.
 - 새 메시지가 오면 Realtime 으로 바로 굵게 되고, 채널을 열어 읽음 처리(`useMarkAsRead`)가 되면 바로 풀립니다.
-- 채널에 새로 참여하거나 DM 을 새로 만든 직후에는 `refresh()` 를 불러 주세요 (`channel_members` 는 Realtime 이 꺼져 있어서).
+- 채널에 새로 참여하거나 DM 을 새로 만들어도 따로 할 일은 없습니다. 그 채널에 메시지가 오면 자동으로 DB 를 다시 읽습니다.
+  (바로 다시 읽고 싶을 때만 `refresh()` 를 부르면 됩니다)
 - 기준: 채널 본문 메시지(스레드 답글 제외) 중 `id > last_read_message_id` 인 것이 있으면 미읽음. 내가 보낸 메시지는 미읽음으로 치지 않습니다.
 - **굵게가 풀리려면 B 의 메시지 목록에 `useMarkAsRead` 가 연결되어 있어야 합니다** (위 D-1 참고).
 
@@ -85,6 +86,7 @@ return (
 
 - `@` 를 치면 채널 멤버(나 제외) 이름 목록이 입력창 위에 뜹니다. ↑↓ 이동, Enter·Tab 선택, Esc 닫기.
 - 목록이 열려 있을 때 Enter 는 전송이 아니라 이름 선택입니다. `MessageInput` 의 `onKeyDown` 은 고치지 않아도 됩니다.
+- 커서 위치는 입력 이벤트가 끝난 뒤(다음 화면 그리기 직전)에 읽습니다. 그래서 입력창 쪽에서 입력 순서를 따로 맞추지 않아도 글자가 정상으로 써집니다.
 
 ### 테스트
 

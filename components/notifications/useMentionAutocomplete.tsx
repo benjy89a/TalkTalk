@@ -119,9 +119,17 @@ export function useMentionAutocomplete({ channelId, textareaRef, text, setText }
     const el = textareaRef.current;
     if (!el) return;
 
+    // 커서 위치는 "다음 화면 그리기 직전"에 기억한다.
+    // 입력(input) 이벤트 도중에 바로 상태를 바꾸면, 입력창 쪽(MessageInput)이 새 글자를 기억하기 전에
+    // 화면이 다시 그려져서 입력창이 이전 값으로 되돌아가는 문제가 있었다 ("글자가 안 써짐").
+    // requestAnimationFrame 으로 미루면 입력창이 새 글자를 먼저 기억한 뒤에 커서 위치를 읽는다.
+    let frame = 0;
     const updateCaret = () => {
-      setCaret(el.selectionStart ?? 0);
-      setDismissedAt((d) => (d !== null && !el.value.includes("@") ? null : d));
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        setCaret(el.selectionStart ?? 0);
+        setDismissedAt((d) => (d !== null && !el.value.includes("@") ? null : d));
+      });
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -148,6 +156,7 @@ export function useMentionAutocomplete({ channelId, textareaRef, text, setText }
     el.addEventListener("click", updateCaret);
     el.addEventListener("focus", updateCaret);
     return () => {
+      cancelAnimationFrame(frame);
       el.removeEventListener("keydown", onKeyDown);
       el.removeEventListener("keyup", updateCaret);
       el.removeEventListener("input", updateCaret);
