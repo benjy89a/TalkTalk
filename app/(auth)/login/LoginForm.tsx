@@ -4,11 +4,32 @@
 // - 로그인: 이메일 + 비밀번호
 // - 회원가입: 이름 + 이메일 + 비밀번호 → DB 트리거가 profiles 를 만들고 #general 에 자동 참여시킨다
 // - 성공하면 첫 화면(/)으로 이동
-import { useState } from "react";
+// - "이메일 기억하기": 이 브라우저에 이메일만 저장한다 (비밀번호는 절대 저장하지 않음 — 비밀번호는 브라우저 비밀번호 관리자에 맡긴다)
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "signup";
+
+// 이메일 기억하기 저장 이름 (이 브라우저에만 저장됨)
+const REMEMBER_EMAIL_KEY = "talktalk:remembered-email";
+
+function readRememberedEmail(): string | null {
+  try {
+    return localStorage.getItem(REMEMBER_EMAIL_KEY);
+  } catch {
+    return null; // 사생활 보호 모드 등에서 저장소를 못 쓰면 그냥 넘어간다
+  }
+}
+
+function saveRememberedEmail(email: string | null) {
+  try {
+    if (email) localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+    else localStorage.removeItem(REMEMBER_EMAIL_KEY);
+  } catch {
+    // 저장소를 못 써도 로그인은 계속된다
+  }
+}
 
 // Supabase 가 돌려주는 영어 에러를 쉬운 한국어로 바꿔준다
 function toKoreanError(code: string | undefined, message: string): string {
@@ -44,6 +65,17 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [rememberEmail, setRememberEmail] = useState(false);
+
+  useEffect(() => {
+    // 화면이 뜬 뒤 한 번, 기억해 둔 이메일이 있으면 채워 넣는다
+    const saved = readRememberedEmail();
+    if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEmail(saved);
+      setRememberEmail(true);
+    }
+  }, []);
 
   const isSignup = mode === "signup";
 
@@ -102,6 +134,8 @@ export default function LoginForm() {
           setError(toKoreanError(error.code, error.message));
           return;
         }
+        // 로그인 성공: 체크했으면 이메일만 기억하고, 체크를 풀었으면 기억한 이메일을 지운다
+        saveRememberedEmail(rememberEmail ? email.trim() : null);
       }
 
       // 로그인 성공 → 첫 화면으로 이동하고, 서버 화면도 로그인 상태로 새로 그린다
@@ -165,6 +199,23 @@ export default function LoginForm() {
             className={inputClass}
           />
         </label>
+
+        {!isSignup && (
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={rememberEmail}
+              onChange={(e) => setRememberEmail(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[#1e325c]"
+            />
+            <span>
+              이메일 기억하기
+              <span className="block text-xs text-gray-500">
+                비밀번호는 저장하지 않아요. 여러 사람이 쓰는 컴퓨터에서는 체크하지 마세요.
+              </span>
+            </span>
+          </label>
+        )}
 
         {error && (
           <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
