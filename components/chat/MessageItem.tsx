@@ -55,6 +55,8 @@ export default function MessageItem({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false); // 이모지 고르는 창
+  const [confirming, setConfirming] = useState(false); // 삭제 확인 줄
+  const [actionError, setActionError] = useState<string | null>(null); // 수정·삭제 실패 안내
   // 소프트 삭제된 메시지 (팀장님 005): 줄은 남고 내용은 비어 있음 → 카톡처럼 "삭제된 메시지입니다"
   const deleted = !status && !!message.deleted_at;
   const deletedBubble = (
@@ -69,27 +71,29 @@ export default function MessageItem({
     const ok = await editMessage(message.id, next);
     setBusy(false);
     if (ok) setEditing(false);
-    else alert("메시지를 수정하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    else setActionError("메시지를 수정하지 못했어요. 잠시 후 다시 시도해 주세요.");
   }
 
-  async function onDelete() {
-    // 소프트 삭제(팀장님 005): 말풍선은 "삭제된 메시지입니다"로 남고 답글은 그대로. 되돌릴 수는 없다.
-    const replies = thread?.count ?? 0;
-    const ask =
-      "이 메시지를 삭제할까요?\n'삭제된 메시지입니다'로 바뀌고 되돌릴 수 없어요." +
-      (replies > 0 ? `\n답글 ${replies}개는 그대로 남아요.` : "");
-    if (!window.confirm(ask)) return;
+  // 소프트 삭제(팀장님 005): 말풍선은 "삭제된 메시지입니다"로 남고 답글은 그대로. 되돌릴 수는 없다.
+  // 확인은 브라우저 팝업(window.confirm) 대신 말풍선 아래 작은 확인 줄로 한다
+  // → 앱 안 브라우저 등 팝업이 막힌 곳에서는 confirm 이 바로 "아니요"가 되어 삭제가 아무 반응 없이 멈췄음
+  async function confirmDelete() {
+    if (busy) return;
+    setBusy(true);
     const ok = await deleteMessage(message.id);
-    if (!ok) alert("메시지를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    setBusy(false);
+    setConfirming(false);
+    if (!ok) setActionError("메시지를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
   }
 
   // 내 메시지(저장 완료)에만: 마우스를 올리면 보이는 "수정 · 삭제"
   const ownActions =
-    mine && !status && !editing && !deleted ? (
+    mine && !status && !editing && !deleted && !confirming ? (
       <span className="invisible flex shrink-0 gap-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible focus-within:visible">
         <button
           type="button"
           onClick={() => {
+            setActionError(null);
             setDraft(message.content);
             setEditing(true);
           }}
@@ -97,7 +101,14 @@ export default function MessageItem({
         >
           수정
         </button>
-        <button type="button" onClick={onDelete} className="rounded px-1 hover:text-red-600">
+        <button
+          type="button"
+          onClick={() => {
+            setActionError(null);
+            setConfirming(true);
+          }}
+          className="rounded px-1 hover:text-red-600"
+        >
           삭제
         </button>
       </span>
@@ -222,6 +233,51 @@ export default function MessageItem({
       </span>
     ) : null;
 
+  // 삭제 확인 줄 / 실패 안내 (내 메시지 말풍선 바로 아래, 오른쪽 정렬)
+  const replyCount = thread?.count ?? 0;
+  const confirmBar =
+    confirming && !deleted ? (
+      <div
+        role="alertdialog"
+        aria-label="메시지 삭제 확인"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault(); // 스레드 패널 닫기(Esc)와 겹치지 않게
+            setConfirming(false);
+          }
+        }}
+        className={`mt-1 flex ${maxW} flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[11px] leading-4 text-gray-600`}
+      >
+        <span>
+          삭제하면 &lsquo;삭제된 메시지입니다&rsquo;로 바뀌고 되돌릴 수 없어요.
+          {replyCount > 0 && ` 답글 ${replyCount}개는 그대로 남아요.`}
+        </span>
+        <span className="flex gap-1">
+          <button
+            type="button"
+            autoFocus // 실수로 Enter 를 눌러도 지워지지 않게 "취소"에 먼저 초점
+            onClick={() => setConfirming(false)}
+            className="rounded border border-gray-300 bg-white px-2 py-0.5 font-medium hover:bg-gray-50"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={confirmDelete}
+            disabled={busy}
+            className="rounded bg-red-600 px-2 py-0.5 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {busy ? "삭제 중…" : "삭제"}
+          </button>
+        </span>
+      </div>
+    ) : null;
+  const errorLine = actionError ? (
+    <p role="alert" className="mt-1 text-[11px] leading-4 text-red-600">
+      {actionError}
+    </p>
+  ) : null;
+
   const rowBg = active ? "bg-blue-50" : "";
   // 첨부 칸 (D) — 저장된 메시지에만
   const attachments = renderAttachments && !status && !deleted ? renderAttachments(message) : null;
@@ -278,6 +334,8 @@ export default function MessageItem({
             </p>
           )}
         </div>
+        {confirmBar}
+        {errorLine}
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
         {reactionChips}
         {replyLink}
