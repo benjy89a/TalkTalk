@@ -6,7 +6,8 @@
 // 3) 고른 사람들을 role 'member' 로 함께 넣는다 (멤버 초대)
 // 권한은 DB(RLS + guard_member_role 트리거)가 지킨다. 막히면 에러 문구를 보여준다.
 // (채널을 만든 사람은 다른 사람을 멤버로 넣을 수 있다 — can_add_channel_member)
-import { useState } from "react";
+// 공개 채널은 서비스 관리자만 만들 수 있다 (002_roles.sql). 일반 멤버에게는 "공개" 선택지를 숨긴다.
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import MemberPicker from "./MemberPicker";
 import { primaryButton, secondaryButton, textInput, toKoreanChannelError } from "./ui";
@@ -20,7 +21,25 @@ type Props = {
 
 export default function CreateChannelForm({ onCreated, onCancel }: Props) {
   const [name, setName] = useState("");
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(true);
+  // 공개 채널을 만들 수 있는가 (= 서비스 관리자인가). 확인 전·실패 시에는 false (안전한 쪽)
+  const [canCreatePublic, setCanCreatePublic] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkAdmin() {
+      try {
+        const { data, error } = await createClient().rpc("is_app_admin");
+        if (!cancelled && !error) setCanCreatePublic(data === true);
+      } catch {
+        // 확인하지 못하면 비공개만 보여 준다
+      }
+    }
+    void checkAdmin();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [inviteIds, setInviteIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +75,12 @@ export default function CreateChannelForm({ onCreated, onCancel }: Props) {
 
       const { data: channel, error: channelError } = await supabase
         .from("channels")
-        .insert({ name: trimmed, type: isPrivate ? "private" : "public", created_by: me })
+        .insert({
+          name: trimmed,
+          // 서비스 관리자가 아니면 항상 비공개 (DB 도 공개 채널 생성을 거절한다)
+          type: canCreatePublic && !isPrivate ? "public" : "private",
+          created_by: me,
+        })
         .select("id")
         .single();
       if (channelError) throw channelError;
@@ -109,24 +133,26 @@ export default function CreateChannelForm({ onCreated, onCancel }: Props) {
       <fieldset>
         <legend className="mb-1 block text-sm font-medium text-gray-700">공개 범위</legend>
         <div className="space-y-2">
+          {canCreatePublic && (
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="visibility"
+                checked={!isPrivate}
+                onChange={() => setIsPrivate(false)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium"># 공개</span>
+                <span className="block text-gray-500">누구나 둘러보고 스스로 참여할 수 있어요</span>
+              </span>
+            </label>
+          )}
           <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input
               type="radio"
               name="visibility"
-              checked={!isPrivate}
-              onChange={() => setIsPrivate(false)}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="font-medium"># 공개</span>
-              <span className="block text-gray-500">누구나 둘러보고 스스로 참여할 수 있어요</span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="visibility"
-              checked={isPrivate}
+              checked={isPrivate || !canCreatePublic}
               onChange={() => setIsPrivate(true)}
               className="mt-0.5"
             />
@@ -135,6 +161,9 @@ export default function CreateChannelForm({ onCreated, onCancel }: Props) {
               <span className="block text-gray-500">관리자가 초대한 사람만 볼 수 있어요</span>
             </span>
           </label>
+          {!canCreatePublic && (
+            <p className="text-xs text-gray-500">공개 채널은 서비스 관리자만 만들 수 있어요.</p>
+          )}
         </div>
       </fieldset>
 
