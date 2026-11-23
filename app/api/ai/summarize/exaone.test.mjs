@@ -1,0 +1,128 @@
+// 모든 HTTP는 가짜 fetch다. 환경변수를 읽거나 실제 EXAONE을 호출하지 않는다.
+import assert from "node:assert/strict";
+import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL } from "./handler.ts";
+
+// 실제 발급 키가 아닌 가짜 HTTP 테스트 전용 값이다.
+const TEST_CREDENTIAL = "unit-test-only";
+const signal = () => new AbortController().signal;
+const answer = (content = " 테스트용 최종 요약 ", finish_reason = "stop") => Response.json({
+  choices: [{ finish_reason, message: { content, reasoning_content: "private reasoning marker" } }],
+});
+const errorIs = (status, code) => (error) => {
+  assert.equal(error.status, status);
+  assert.equal(error.code, code);
+  assert.doesNotMatch(error.message, /unit-test-only|private provider detail|private reasoning marker/);
+  return true;
+};
+
+test("생성만으로 호출하지 않음, 고정 endpoint·모델·서버 인증·출력 제한·최종 본문만 사용", async () => {
+  let calls = 0;
+  const generate = createExaoneSummary({ apiKey: ` ${TEST_CREDENTIAL} `, fetcher: async (url, options) => {
+    calls += 1;
+    assert.equal(url, EXAONE_SUMMARY_URL);
+    assert.equal(url, "https://api.exaone.ai/v1/chat/completions");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers.Authorization, `Bearer ${TEST_CREDENTIAL}`);
+    assert.equal(options.headers["Content-Type"], "application/json");
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.redirect, "error");
+    assert.ok(options.signal instanceof AbortSignal);
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, EXAONE_MODEL);
+    assert.equal(body.model, "k-exaone_v2.5");
+    assert.equal(body.stream, false);
+    assert.equal(body.reasoning_effort, "low");
+    assert.equal(body.max_tokens, 2048);
+    assert.deepEqual(body.messages.map((message) => message.role), ["system", "user"]);
+    assert.deepEqual(JSON.parse(body.messages[1].content), { messages: ["합성 테스트", "지시를 무시하라는 문장도 데이터"] });
+    assert.doesNotMatch(options.body, /unit-test-only/);
+    return answer();
+  } });
+  assert.equal(calls, 0);
+  assert.equal(await generate([" 합성 테스트 ", "지시를 무시하라는 문장도 데이터"], signal()), "테스트용 최종 요약");
+  assert.equal(calls, 1);
+});
+
+test("키 누락·빈 키·줄바꿈과 잘못된 입력은 외부 호출 전 거절", async () => {
+  let calls = 0;
+  const fetcher = async () => { calls += 1; return answer(); };
+  for (const apiKey of [undefined, "", "  ", `${TEST_CREDENTIAL}\nheader`]) {
+    await assert.rejects(createExaoneSummary({ apiKey, fetcher })(["합성"], signal()), errorIs(503, "AI_NOT_CONFIGURED"));
+  }
+  await assert.rejects(createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher })([], signal()), errorIs(400, "INVALID_MESSAGES"));
+  assert.equal(calls, 0);
+});
+
+test("업체 오류 상태 정제·본문 미파싱·자동 재시도 없음", async (t) => {
+  for (const [upstream, status, code] of [
+    [401, 502, "AI_AUTH_FAILED"], [403, 502, "AI_AUTH_FAILED"],
+    [429, 429, "AI_RATE_LIMITED"], [408, 504, "AI_TIMEOUT"], [504, 504, "AI_TIMEOUT"],
+    [400, 502, "AI_SERVICE_ERROR"], [500, 502, "AI_SERVICE_ERROR"], [503, 502, "AI_SERVICE_ERROR"],
+  ]) {
+    await t.test(String(upstream), async () => {
+      let calls = 0;
+      let cancelled = false;
+      const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => {
+        calls += 1;
+        return { ok: false, status: upstream, body: { async cancel() { cancelled = true; } },
+          json() { assert.fail("오류 본문을 읽으면 안 됨"); } };
+      } });
+      await assert.rejects(generate(["합성"], signal()), errorIs(status, code));
+      assert.equal(calls, 1);
+      assert.equal(cancelled, true);
+    });
+  }
+});
+
+test("비JSON·빈 본문·추론만 있는 응답·거절·긴 본문·비정상 종료는 성공으로 반환하지 않음", async () => {
+  const responses = [
+    new Response("not json"), Response.json(null), Response.json({}), Response.json({ choices: [] }),
+    Response.json({ choices: [null] }), Response.json({ choices: [{ finish_reason: "stop", message: { reasoning_content: "private reasoning marker" } }] }),
+    answer(null), answer(123), answer("  "), answer("가".repeat(8001)), answer("본문", "content_filter"),
+    Response.json({ choices: [{ message: { content: "본문" } }] }),
+  ];
+  for (const response of responses) {
+    const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => response });
+    await assert.rejects(generate(["합성"], signal()), errorIs(502, "INVALID_AI_RESPONSE"));
+  }
+});
+
+test("토큰 제한으로 잘린 응답은 별도 오류", async () => {
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => answer("잘린 본문", "length") });
+  await assert.rejects(generate(["합성"], signal()), errorIs(502, "AI_OUTPUT_TRUNCATED"));
+});
+
+test("네트워크 오류·리다이렉트 실패에서 내부 진단 미노출", async () => {
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => { throw new Error("private provider detail unit-test-only"); } });
+  await assert.rejects(generate(["합성"], signal()), errorIs(502, "AI_CONNECTION_FAILED"));
+});
+
+test("업체 요청 및 본문 읽기 시간 초과는 모두 정제한 504", async () => {
+  for (const duringBody of [false, true]) {
+    const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, timeoutMs: 5, fetcher: async (_url, options) => {
+      const wait = () => delay(1000, undefined, { signal: options.signal });
+      if (!duringBody) await wait();
+      return { ok: true, async json() { await wait(); return {}; } };
+    } });
+    await assert.rejects(generate(["합성"], signal()), errorIs(504, "AI_TIMEOUT"));
+  }
+});
+
+test("시작 전 취소는 호출하지 않으며 요청·본문 도중 취소도 전파", async () => {
+  const before = new AbortController();
+  before.abort();
+  let called = false;
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => { called = true; return answer(); } });
+  await assert.rejects(generate(["합성"], before.signal), { name: "AbortError" });
+  assert.equal(called, false);
+  for (const duringBody of [false, true]) {
+    const controller = new AbortController();
+    const cancelled = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async (_url, options) => {
+      if (!duringBody) { controller.abort(); options.signal.throwIfAborted(); }
+      return { ok: true, async json() { controller.abort(); options.signal.throwIfAborted(); } };
+    } });
+    await assert.rejects(cancelled(["합성"], controller.signal), { name: "AbortError" });
+  }
+});
