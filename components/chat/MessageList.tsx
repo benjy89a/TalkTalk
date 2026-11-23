@@ -2,6 +2,7 @@
 // [B] 채널 메시지 목록 (B-1 목록 · B-3 실시간)
 // 사용 예: <MessageList channelId={채널id} />
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMarkAsRead } from "@/components/notifications/useMarkAsRead";
 import MessageItem from "./MessageItem";
 import { formatDateDivider, isGroupedWith, isSameDay } from "./format";
 import { mergeWithOutbox, useOutbox } from "./outbox";
@@ -24,6 +25,16 @@ export default function MessageList({ channelId }: Props) {
     () => mergeWithOutbox(loaded, outbox, channelId, null),
     [loaded, outbox, channelId],
   );
+
+  // 읽음 처리 (D-1 문수정님 훅) — DB 에 저장된 마지막 메시지 id 를 넘긴다
+  // (보내는 중 메시지는 임시 id -1 이라 제외)
+  const lastSavedId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (!messages[i].status) return messages[i].id;
+    }
+    return null;
+  }, [messages]);
+  useMarkAsRead(channelId, lastSavedId);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);

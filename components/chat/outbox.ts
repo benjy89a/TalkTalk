@@ -103,6 +103,14 @@ export function retryMessage(clientId: string) {
   return deliver(item);
 }
 
+// 다시 연결됐을 때 실패한 메시지를 모두 자동 재전송 (B-4)
+// 같은 client_id 를 쓰므로 이전 시도가 사실은 저장됐어도 두 번 저장되지 않는다
+export function retryAllFailed() {
+  for (const p of state.pending) {
+    if (p.status === "failed") retryMessage(p.client_id);
+  }
+}
+
 // 실패한 메시지 지우기 (DB 에는 저장되지 않은 것)
 export function discardMessage(clientId: string) {
   updatePending(clientId, null);
