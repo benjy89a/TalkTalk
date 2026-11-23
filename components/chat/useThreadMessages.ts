@@ -127,9 +127,10 @@ export function useThreadMessages(rootId: number) {
 
   // ---- 수정 · 삭제 반영 ----
   const applyEdit = useCallback(
-    (id: number, content: string) => {
-      if (id === rootId) setRoot((r) => (r ? { ...r, content } : r));
-      else setReplies((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content } : m)) : prev));
+    (id: number, content: string, editedAt: string | null) => {
+      const patch = { content, edited_at: editedAt };
+      if (id === rootId) setRoot((r) => (r ? { ...r, ...patch } : r));
+      else setReplies((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, ...patch } : m)) : prev));
     },
     [rootId],
   );
@@ -142,8 +143,8 @@ export function useThreadMessages(rootId: number) {
   );
   useEffect(() => {
     const onEdited = (e: Event) => {
-      const { id, content } = (e as CustomEvent<EditedDetail>).detail;
-      applyEdit(id, content);
+      const { id, content, editedAt } = (e as CustomEvent<EditedDetail>).detail;
+      applyEdit(id, content, editedAt);
     };
     const onDeleted = (e: Event) => applyDelete((e as CustomEvent<DeletedDetail>).detail.id);
     window.addEventListener(EDITED_EVENT, onEdited);
@@ -177,8 +178,8 @@ export function useThreadMessages(rootId: number) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: `parent_id=eq.${rootId}` },
         (payload) => {
-          const row = payload.new as Message;
-          if (active) applyEdit(row.id, row.content);
+          const row = payload.new as ChatMessage;
+          if (active) applyEdit(row.id, row.content, row.edited_at ?? null);
         },
       )
       // 원본 수정
@@ -186,8 +187,8 @@ export function useThreadMessages(rootId: number) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: `id=eq.${rootId}` },
         (payload) => {
-          const row = payload.new as Message;
-          if (active) applyEdit(row.id, row.content);
+          const row = payload.new as ChatMessage;
+          if (active) applyEdit(row.id, row.content, row.edited_at ?? null);
         },
       )
       // 삭제 (알림에는 id 만 온다)

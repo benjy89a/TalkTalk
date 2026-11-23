@@ -213,8 +213,10 @@ export function useChannelMessages(channelId: string) {
   const catchUpRef = useRef<() => void>(() => {});
 
   // ---- 수정 · 삭제 반영 (내가 한 것: 브라우저 신호 / 남이 한 것: Realtime) ----
-  const applyEdit = useCallback((id: number, content: string) => {
-    setMessages((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content } : m)) : prev));
+  const applyEdit = useCallback((id: number, content: string, editedAt: string | null) => {
+    setMessages((prev) =>
+      prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content, edited_at: editedAt } : m)) : prev,
+    );
   }, []);
 
   const applyDelete = useCallback((id: number) => {
@@ -243,8 +245,8 @@ export function useChannelMessages(channelId: string) {
 
   useEffect(() => {
     const onEdited = (e: Event) => {
-      const { id, content } = (e as CustomEvent<EditedDetail>).detail;
-      applyEdit(id, content);
+      const { id, content, editedAt } = (e as CustomEvent<EditedDetail>).detail;
+      applyEdit(id, content, editedAt);
     };
     const onDeleted = (e: Event) => applyDelete((e as CustomEvent<DeletedDetail>).detail.id);
     window.addEventListener(EDITED_EVENT, onEdited);
@@ -283,8 +285,8 @@ export function useChannelMessages(channelId: string) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: `channel_id=eq.${channelId}` },
         (payload) => {
-          const row = payload.new as Message;
-          if (active) applyEdit(row.id, row.content);
+          const row = payload.new as ChatMessage;
+          if (active) applyEdit(row.id, row.content, row.edited_at ?? null);
         },
       )
       // 누군가 메시지를 삭제 → 삭제 알림에는 id 만 온다 (Supabase 는 삭제 알림을 채널로 거를 수 없음)

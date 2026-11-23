@@ -167,9 +167,9 @@ export function forgetSent(clientId: string) {
 }
 
 // 수정된 내용을 "이번 접속에서 보낸 기록"에도 반영
-export function updateSent(id: number, content: string) {
+export function updateSent(id: number, content: string, editedAt: string | null) {
   if (!state.sent.some((m) => m.id === id)) return;
-  setState({ ...state, sent: state.sent.map((m) => (m.id === id ? { ...m, content } : m)) });
+  setState({ ...state, sent: state.sent.map((m) => (m.id === id ? { ...m, content, edited_at: editedAt } : m)) });
 }
 
 // 서버에서 불러온 목록 + 내가 보낸(저장된) 메시지 + 보내는 중 메시지를 합친다

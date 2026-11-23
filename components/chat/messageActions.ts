@@ -10,7 +10,7 @@ import { forgetSent, MAX_LENGTH, updateSent } from "./outbox";
 export const EDITED_EVENT = "talktalk:message-edited";
 export const DELETED_EVENT = "talktalk:message-deleted";
 
-export type EditedDetail = { id: number; content: string };
+export type EditedDetail = { id: number; content: string; editedAt: string | null };
 export type DeletedDetail = { id: number };
 
 export async function editMessage(id: number, content: string): Promise<boolean> {
@@ -20,13 +20,14 @@ export async function editMessage(id: number, content: string): Promise<boolean>
     .from("messages")
     .update({ content: next })
     .eq("id", id)
-    .select("id");
+    .select("id, edited_at"); // 수정 시각은 DB 가 자동으로 적어 준 값을 받아 쓴다
   if (error || !data?.length) {
     console.error("[chat] 메시지 수정 실패", error ?? "권한 없음");
     return false;
   }
-  updateSent(id, next);
-  window.dispatchEvent(new CustomEvent<EditedDetail>(EDITED_EVENT, { detail: { id, content: next } }));
+  const editedAt = (data[0] as { edited_at?: string | null }).edited_at ?? new Date().toISOString();
+  updateSent(id, next, editedAt);
+  window.dispatchEvent(new CustomEvent<EditedDetail>(EDITED_EVENT, { detail: { id, content: next, editedAt } }));
   return true;
 }
 
