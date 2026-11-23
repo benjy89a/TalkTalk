@@ -13,14 +13,17 @@ import {
   type LoadStatus,
 } from "./chatData";
 import { retryAllFailed } from "./outbox";
-import { MESSAGE_SELECT, type ChatMessage } from "./types";
+import { MAX_RENDERED, MESSAGE_SELECT, type ChatMessage } from "./types";
 
-// 스레드 답글은 보통 많지 않으므로 한 번에 넉넉히 불러온다
-const THREAD_LIMIT = 500;
+// 스레드 답글은 채널 본문과 같은 기준으로 최대 500개(MAX_RENDERED)까지 보여준다.
+// 답글이 그보다 많으면 "최신" 500개를 보여주고, 생략된 개수는 omitted 로 알려 준다.
+// (예전에는 오래된 순 500개를 불러와서, 501번째 이후 최신 답글이 안 보이는 문제가 있었다)
+const THREAD_LIMIT = MAX_RENDERED;
 
 export function useThreadMessages(rootId: number) {
   const [root, setRoot] = useState<ChatMessage | null>(null);
   const [replies, setReplies] = useState<ChatMessage[]>([]);
+  const [omitted, setOmitted] = useState(0); // 화면에 안 보여준 오래된 답글 수
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [liveState, setLiveState] = useState<{ rootId: number; status: LiveStatus }>();
   const online = useOnline();
@@ -41,16 +44,20 @@ export function useThreadMessages(rootId: number) {
       setStatus("loading");
       setRoot(null);
       setReplies([]);
+      setOmitted(0);
       lastIdRef.current = undefined;
 
-      const [rootRes, repliesRes] = await Promise.all([
+      const [rootRes, repliesRes, countRes] = await Promise.all([
         supabase.from("messages").select(MESSAGE_SELECT).eq("id", rootId).single(),
+        // 최신 500개 (큰 id 부터) → 화면에는 오래된 순으로 뒤집어서
         supabase
           .from("messages")
           .select(MESSAGE_SELECT)
           .eq("parent_id", rootId)
-          .order("id")
+          .order("id", { ascending: false })
           .limit(THREAD_LIMIT),
+        // 전체 답글 수 (개수만 — 행은 안 가져옴)
+        supabase.from("messages").select("id", { count: "exact", head: true }).eq("parent_id", rootId),
       ]);
       if (cancelled) return;
       if (rootRes.error || repliesRes.error) {
@@ -58,7 +65,8 @@ export function useThreadMessages(rootId: number) {
         setStatus("error");
         return;
       }
-      const rows = repliesRes.data as ChatMessage[];
+      const rows = (repliesRes.data as ChatMessage[]).reverse();
+      setOmitted(Math.max(0, (countRes.count ?? rows.length) - rows.length));
       lastIdRef.current = rows.at(-1)?.id ?? rootId;
       setRoot(rootRes.data as ChatMessage);
       setReplies((prev) => mergeById(prev, rows));
@@ -156,5 +164,5 @@ export function useThreadMessages(rootId: number) {
     };
   }, [catchUp]);
 
-  return { root, replies, status, live };
+  return { root, replies, omitted, status, live };
 }

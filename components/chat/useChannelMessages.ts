@@ -55,6 +55,15 @@ export function useChannelMessages(channelId: string) {
   // 무한스크롤 (B-6): 더 오래된 메시지가 남아 있는지 / 지금 불러오는 중인지
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  // 잠깐 보여줄 안내 (예: 놓친 메시지가 많아 최신부터 보여줄 때). 채널별로 기억 → 다른 채널에선 안 보임
+  const [noticeState, setNoticeState] = useState<{ channelId: string; text: string } | null>(null);
+  const notice = noticeState?.channelId === channelId ? noticeState.text : null;
+  // 몇 초 뒤 자동으로 사라지게
+  useEffect(() => {
+    if (!noticeState) return;
+    const t = setTimeout(() => setNoticeState(null), 5000);
+    return () => clearTimeout(t);
+  }, [noticeState]);
   const loadingOlderRef = useRef(false);
   const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
@@ -263,6 +272,7 @@ export function useChannelMessages(channelId: string) {
         // (그 이전 메시지는 위로 올려서 볼 수 있다)
         lastIdByChannel.delete(channelId);
         setReloadKey((k) => k + 1);
+        setNoticeState({ channelId, text: "놓친 메시지가 많아 최신 메시지부터 보여드려요. 이전 메시지는 위로 올려서 볼 수 있어요." });
       } else if (rows.length > 0) {
         applyRows(rows);
       }
@@ -300,5 +310,17 @@ export function useChannelMessages(channelId: string) {
   // 최대 개수까지 쌓였는지 (위로 더 불러오지 않음 → "검색으로 찾아보세요" 안내)
   const capped = messages.length >= MAX_RENDERED;
 
-  return { messages, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder, capped, trimOld };
+  return {
+    messages,
+    replyStats,
+    status,
+    live,
+    reload,
+    hasMore,
+    loadingOlder,
+    loadOlder,
+    capped,
+    trimOld,
+    notice,
+  };
 }

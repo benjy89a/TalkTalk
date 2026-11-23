@@ -11,6 +11,7 @@ import MessageItem from "./MessageItem";
 import MessageRows from "./MessageRows";
 import { mergeWithOutbox, useOutbox } from "./outbox";
 import { closeThread, useOpenThread } from "./threads";
+import { MAX_RENDERED } from "./types";
 import { useCurrentUserId } from "./useCurrentUserId";
 import { useStickToBottom } from "./useStickToBottom";
 import { useThreadMessages } from "./useThreadMessages";
@@ -25,7 +26,7 @@ export default function ThreadView() {
 }
 
 function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number }) {
-  const { root, replies: loaded, status, live } = useThreadMessages(rootId);
+  const { root, replies: loaded, omitted, status, live } = useThreadMessages(rootId);
   const outbox = useOutbox();
   const myId = useCurrentUserId();
   // 불러온 답글 + 실시간 수신 + 내가 방금 보낸 답글(보내는 중 포함)
@@ -68,10 +69,13 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
   );
 
   return (
-    <div ref={rootRef} className="flex min-h-0 flex-1 flex-col">
+    // h-full: 바깥 패널 칸(팀장님 ThreadPanel 의 overflow-y-auto 칸) 높이에 딱 맞춘다.
+    // 없으면 스레드 전체가 바깥 칸에서 한 덩어리로 스크롤돼서, 답글이 많을 때 입력창이 한참 아래로 밀려나고
+    // "맨 아래로 가기"도 동작하지 않았다.
+    <div ref={rootRef} className="flex h-full min-h-0 flex-1 flex-col">
       {/* 닫기 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-2">
-        <span className="text-xs leading-5 font-medium text-gray-600">답글 {replies.length}개</span>
+        <span className="text-xs leading-5 font-medium text-gray-600">답글 {replies.length + omitted}개</span>
         <button
           type="button"
           onClick={closeThread}
@@ -103,10 +107,17 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               <div className="my-3 flex items-center gap-3" role="separator">
                 <div className="h-px flex-1 bg-gray-200" />
                 <span className="text-xs leading-5 font-medium text-gray-600">
-                  {replies.length > 0 ? `답글 ${replies.length}개` : "아직 답글이 없어요"}
+                  {replies.length + omitted > 0 ? `답글 ${replies.length + omitted}개` : "아직 답글이 없어요"}
                 </span>
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
+
+              {/* 답글이 500개를 넘으면 최신 500개만 보여준다 */}
+              {omitted > 0 && (
+                <p className="mb-2 rounded-md bg-gray-50 px-3 py-2 text-center text-xs leading-5 text-gray-600">
+                  이전 답글 {omitted.toLocaleString("ko-KR")}개는 생략했어요 · 최신 {MAX_RENDERED}개만 보여드려요
+                </p>
+              )}
 
               {/* 답글 목록 */}
               <MessageRows messages={replies} myId={myId} />

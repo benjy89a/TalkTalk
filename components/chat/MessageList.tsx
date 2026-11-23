@@ -7,7 +7,7 @@
 //   onOpenThread?(message)      — "답글"을 눌렀을 때 추가로 알려 받고 싶을 때. 스레드 패널은 이것 없이도 열린다
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useMarkAsRead } from "@/components/notifications/useMarkAsRead";
-import { CenterText, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
+import { CenterText, InfoBanner, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
 import MessageRows from "./MessageRows";
 import { mergeWithOutbox, useOutbox, type DisplayMessage } from "./outbox";
 import { closeThreadIfNotIn, openThread, useOpenThread } from "./threads";
@@ -34,6 +34,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
     loadOlder,
     capped,
     trimOld,
+    notice,
   } = useChannelMessages(channelId);
   const outbox = useOutbox();
   const myId = useCurrentUserId();
@@ -97,6 +98,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {live === "lost" && <LostBanner />}
+      {notice && <InfoBanner>{notice}</InfoBanner>}
 
       {messages.length === 0 ? (
         <CenterText>아직 메시지가 없어요. 첫 메시지를 보내보세요!</CenterText>
