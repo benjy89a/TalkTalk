@@ -35,7 +35,38 @@ type ChannelContextValue = {
   refreshDmList: () => void;
   // 안 읽은 메시지가 있는 채널인지 (D 의 useUnread). 사이드바 목록이 굵게 표시할 때 쓴다
   isUnread: (channelId: string) => boolean;
+  // 좁은 화면(휴대폰)에서 사이드바를 서랍처럼 열고 닫는다. 넓은 화면에서는 항상 보인다
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
 };
+
+type ChannelRow = { id: string; name: string; type: ChannelType };
+
+// 내가 멤버인 채널 중 기본으로 열 채널 고르기
+//   1) 마지막으로 보던 채널  2) #general  3) 이름순 첫 번째 (공개·비공개 → 없으면 DM)
+async function pickDefaultChannel(me: string, preferId: string | null): Promise<ChannelRow | null> {
+  const { data: mine } = await createClient()
+    .from("channel_members")
+    .select("channel_id, channels!inner(name, type)")
+    .eq("user_id", me);
+
+  const list: ChannelRow[] = (mine ?? []).map((m) => ({
+    id: m.channel_id,
+    name: m.channels.name,
+    type: m.channels.type,
+  }));
+  return (
+    list.find((c) => c.id === preferId) ??
+    list.find((c) => c.type === "public" && c.name === "general") ??
+    [...list]
+      .sort(
+        (a, b) =>
+          Number(a.type === "dm") - Number(b.type === "dm") || a.name.localeCompare(b.name, "ko"),
+      )
+      .at(0) ??
+    null
+  );
+}
 
 const ChannelContext = createContext<ChannelContextValue | null>(null);
 
@@ -90,6 +121,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [channelListKey, setChannelListKey] = useState(0);
   const [dmListKey, setDmListKey] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   // 미읽음 계산은 화면 전체에서 한 번만 한다 (채널 목록·DM 목록이 함께 쓴다)
   const { isUnread } = useUnread(selected?.id ?? null);
 
@@ -112,28 +144,8 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { data: mine } = await createClient()
-        .from("channel_members")
-        .select("channel_id, channels!inner(name, type)")
-        .eq("user_id", me);
+      const pick = await pickDefaultChannel(me, readLastChannel(me));
       if (cancelled) return;
-
-      const list = (mine ?? []).map((m) => ({
-        id: m.channel_id,
-        name: m.channels.name,
-        type: m.channels.type,
-      }));
-      const last = readLastChannel(me);
-      const pick =
-        list.find((c) => c.id === last) ??
-        list.find((c) => c.type === "public" && c.name === "general") ??
-        [...list]
-          .sort(
-            (a, b) =>
-              Number(a.type === "dm") - Number(b.type === "dm") ||
-              a.name.localeCompare(b.name, "ko"),
-          )
-          .at(0);
 
       if (pick) {
         // 사용자가 그 사이 직접 고른 채널이 있으면 그대로 둔다
@@ -152,6 +164,7 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       setSelected({ id, name: null, type: null });
       setReady(true);
+      setSidebarOpen(false); // 휴대폰에서 채널을 고르면 서랍을 닫고 대화 화면을 보여준다
       fillTitle(id, myId);
       if (myId) saveLastChannel(myId, id);
     },
@@ -160,6 +173,51 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
 
   const refreshChannelList = useCallback(() => setChannelListKey((k) => k + 1), []);
   const refreshDmList = useCallback(() => setDmListKey((k) => k + 1), []);
+
+  // 보던 채널에서 나갔거나(나가기·내보내기) 채널이 삭제됐으면 → 다른 채널로 옮긴다.
+  // 목록을 새로 고칠 때(참여·나가기·초대 등)마다 "아직 멤버인지" 확인한다.
+  const selectedId = selected?.id ?? null;
+  useEffect(() => {
+    if (!myId || !selectedId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await createClient()
+        .from("channel_members")
+        .select("channel_id")
+        .eq("channel_id", selectedId)
+        .eq("user_id", myId)
+        .maybeSingle();
+      if (cancelled || data) return; // 아직 멤버면 그대로
+
+      const pick = await pickDefaultChannel(myId, null);
+      if (cancelled) return;
+      setSelected((cur) => {
+        if (cur?.id !== selectedId) return cur; // 그 사이 사용자가 직접 다른 채널을 골랐으면 그대로
+        return pick ? { id: pick.id, name: pick.type === "dm" ? null : pick.name, type: pick.type } : null;
+      });
+      if (pick) {
+        if (pick.type === "dm") fillTitle(pick.id, myId);
+        saveLastChannel(myId, pick.id);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 목록 새로고침 신호(channelListKey, dmListKey)가 올 때만 다시 확인한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelListKey, dmListKey, myId]);
+
+  // 다른 탭에 있다가 돌아오면 목록을 새로 고친다.
+  // (channel_members 는 실시간 알림이 없어서, 남이 나를 초대·내보내기·DM 시작한 것을 여기서 따라잡는다)
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      setChannelListKey((k) => k + 1);
+      setDmListKey((k) => k + 1);
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -173,8 +231,20 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       dmListKey,
       refreshDmList,
       isUnread,
+      sidebarOpen,
+      setSidebarOpen,
     }),
-    [selected, ready, selectChannel, channelListKey, refreshChannelList, dmListKey, refreshDmList, isUnread],
+    [
+      selected,
+      ready,
+      selectChannel,
+      channelListKey,
+      refreshChannelList,
+      dmListKey,
+      refreshDmList,
+      isUnread,
+      sidebarOpen,
+    ],
   );
 
   return <ChannelContext.Provider value={value}>{children}</ChannelContext.Provider>;
