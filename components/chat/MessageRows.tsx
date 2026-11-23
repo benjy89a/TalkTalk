@@ -14,6 +14,7 @@ type Props = {
   onOpenThread?: (rootId: number) => void;
   activeRootId?: number | null; // 지금 스레드 패널에 열린 원본 메시지 (살짝 강조)
   renderAttachments?: (message: DisplayMessage) => ReactNode; // 말풍선 아래 첨부 칸 (D)
+  wide?: boolean; // 좁은 스레드 패널용 넓은 말풍선
 };
 
 export default function MessageRows({
@@ -23,6 +24,7 @@ export default function MessageRows({
   onOpenThread,
   activeRootId,
   renderAttachments,
+  wide,
 }: Props) {
   return (
     <>
@@ -43,6 +45,7 @@ export default function MessageRows({
               onOpenThread={onOpenThread && !m.status ? () => onOpenThread(m.id) : undefined}
               active={activeRootId === m.id}
               renderAttachments={renderAttachments}
+              wide={wide}
             />
           </Fragment>
         );
