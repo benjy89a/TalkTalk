@@ -247,6 +247,8 @@ export async function handleSummarize(
         .select("content")
         .eq("channel_id", input.channelId)
         .is("parent_id", null)
+        // 소프트 삭제된 메시지는 요약 대상에서 제외한다.
+        .is("deleted_at", null)
         .order("id", { ascending: false })
         .limit(input.limit)
         .abortSignal(request.signal);

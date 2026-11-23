@@ -142,6 +142,7 @@ test("채널 최근 원본 메시지 조회 후 시간순 배열을 요약 연�
   assert.deepEqual(received, ["과거", "최신"]);
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "eq" && call[2] === "channel_id" && call[3] === channelId));
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "is" && call[2] === "parent_id" && call[3] === null));
+  assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "is" && call[2] === "deleted_at" && call[3] === null));
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "order" && call[2] === "id" && call[3].ascending === false));
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 10));
 });

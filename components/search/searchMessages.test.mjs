@@ -16,6 +16,7 @@ function mockClient({ user = { id: "test-user" }, authError = null, rows = [], q
     order(...args) { calls.push(["order", ...args]); return query; },
     limit(...args) { calls.push(["limit", ...args]); return query; },
     abortSignal(...args) { calls.push(["abortSignal", ...args]); return query; },
+    is(...args) { calls.push(["is", ...args]); return query; },
     then(resolve, reject) { return Promise.resolve({ data: rows, error: queryError }).then(resolve, reject); },
   };
   const client = {
@@ -61,6 +62,7 @@ test("입력을 다듬어 content ilike와 최신순 정렬을 요청한다", as
   assert.equal(calls[0][0], "getUser");
   assert.deepEqual(calls.find(([name]) => name === "from"), ["from", "messages"]);
   assert.deepEqual(calls.find(([name]) => name === "ilike"), ["ilike", "content", "%배포%"]);
+  assert.deepEqual(calls.find(([name]) => name === "is"), ["is", "deleted_at", null]);
   assert.deepEqual(calls.filter(([name]) => name === "order"), [
     ["order", "created_at", { ascending: false }],
     ["order", "id", { ascending: false }],

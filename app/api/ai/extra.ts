@@ -290,7 +290,9 @@ export async function handleNaturalSearch(
     request.signal.throwIfAborted();
     let query = supabase.from("messages")
       .select("id, channel_id, content, created_at, parent_id")
-      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(count + 1);
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(count + 1)
+      // 소프트 삭제된 메시지는 본문이 남아 있을 수 있어 조회에서 제외한다.
+      .is("deleted_at", null);
     if (id) query = query.eq("channel_id", id);
     for (const keyword of plan.keywords) {
       query = query.ilike("content", `%${keyword.replace(/[\\%_]/g, "\\$&")}%`);
@@ -347,7 +349,8 @@ export async function handleExtractTasks(
     await requireMember(supabase, id, userId, request.signal);
     const { data, error } = await supabase.from("messages")
       .select("id, content, created_at, parent_id")
-      .eq("channel_id", id).order("id", { ascending: false }).limit(count).abortSignal(request.signal);
+      .eq("channel_id", id).is("deleted_at", null)
+      .order("id", { ascending: false }).limit(count).abortSignal(request.signal);
     if (error) throw new ExtraError(500, "DATABASE_ERROR", "대화를 불러오지 못했습니다.");
     const messages = (data ?? []).filter((message) => message.content.trim())
       .map((message) => ({ ...message, content: message.content.trim() })).reverse();
