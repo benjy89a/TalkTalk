@@ -11,8 +11,9 @@
 | 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | ✅ main 머지됨 (PR #9) |
 | B-5 스레드(답글) | `feature/gyeseop-thread` (B-4 위에서 이어서) | ✅ main 머지됨 (PR #13) |
 | B-6 무한스크롤 (+ 맨 아래 잘림 수정) | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | ✅ main 머지됨 (PR #18) |
-| 첨부 칸 열기 (CONTRACTS.md · D 요청) | `feature/gyeseop-attach-slots` | 완료 · 로컬 확인 (PR 올릴 차례) |
-| 스레드 바깥 클릭 · Esc 로 닫기 | `feature/gyeseop-thread-close` (첨부 칸 위에서 이어서) | 완료 · 로컬 확인 |
+| 첨부 칸 열기 (CONTRACTS.md · D 요청) | `feature/gyeseop-attach-slots` | ✅ main 머지됨 (PR #24 에 포함) |
+| 스레드 바깥 클릭 · Esc 로 닫기 | `feature/gyeseop-thread-close` (첨부 칸 위에서 이어서) | ✅ main 머지됨 (PR #24) |
+| @멘션 자동완성 연결 + 스레드 Esc 충돌 방지 (팀장님 요청) | `feature/gyeseop-mention-hook` (최신 main 에서) | 완료 · 로컬 확인 · PR 올림 |
 
 > ⚠️ 브랜치가 B-1 → … → B-5 → B-6 순서로 이어져 있어요. PR 도 **B-4 → B-5 → B-6 순서로, 앞의 것이 머지된 뒤** 올립니다.
 
@@ -120,6 +121,20 @@
 - 🔎 테스트 중 테스트c 계정에서 #general 메시지가 안 보임 → 원인: 그 계정이 #general 에서 "나가기" 한 상태(멤버가 아니라 안 보이는 게 정상). 계섭테스트1로 확인.
 - 검증(테스트 메시지 2개를 잠깐 보냈다가 바로 삭제): 답글 클릭 → 열림 ✅ / 패널 안 클릭 → 유지 ✅ / 다른 답글 → 그 스레드로 바뀜 ✅ / 메시지 영역·사이드바·아래 입력창 클릭 → 닫힘 ✅ / Esc → 닫힘 ✅
 
+### 12. @멘션 자동완성 연결 + 스레드 Esc 충돌 방지 (팀장님 후속 요청, PR #24 머지 후)
+- 팀장님 요청 2가지를 받아 **최신 main 에서 새 브랜치** `feature/gyeseop-mention-hook` 로 작업 (팀 규칙대로).
+- 작업 전에 문수정님 훅(`useMentionAutocomplete`)을 먼저 읽고 동작을 확인:
+  - 훅은 입력창(textarea)에 **직접** 키 리스너를 붙임 → 문서 전체에 붙은 내 스레드 리스너보다 **먼저** 실행됨
+  - 목록이 열렸을 때 **Enter/Tab**: `preventDefault + stopPropagation` → 내 전송 코드까지 안 감 (MessageInput onKeyDown 수정 불필요)
+  - **Esc**: `preventDefault` 만 → 내 스레드 리스너에서 `e.defaultPrevented` 로 "목록이 이미 처리함"을 알 수 있음 → 팀장님 추천 **방법 A** 가 맞음
+- 요청 1 (`MessageInput.tsx`): import 1줄 + `useMentionAutocomplete({ channelId, textareaRef: ref, text, setText })` + 입력창 줄 바로 위 `{mention.popup}` — 스레드 답글 입력창에도 자동 적용.
+- 요청 2 (`ThreadView.tsx`): Esc 리스너에 `if (e.defaultPrevented) return;` 추가.
+- 검증 (최신 main 첫 화면, 계섭테스트1):
+  - 본문 입력창 `@` → 이름 목록 ✅ / ↓ 이동 ✅ / Enter → "@테스트1 " 들어가고 **전송 안 됨** ✅ / Esc → 목록 닫힘 ✅
+  - 스레드 입력창 `@` → 목록 ✅ / **첫 Esc → 목록만 닫히고 스레드 유지** ✅ / 두 번째 Esc → 스레드 닫힘 ✅
+  - (함께 받은 확인 항목) **답글 전송 시 DB 에 parent_id 저장, 채널 본문에는 안 나옴**: 답글 1개 보내서 DB 확인 `parent_id = 1`(원본 "테스트 메시지입니다 👋") ✅, 본문엔 없고 원본에 "답글 1개" ✅ → 확인 후 테스트 답글 삭제
+- 다른 사람 파일은 건드리지 않음 (`components/chat/` 2개 파일만).
+
 ### 팀 규정 점검
 - CLAUDE.md · PR 템플릿 · TECH_SPEC · FINAL_CHECKLIST 와 대조 → 위반 없음. `MessageItem.tsx` 에 빠져 있던 `"use client"` 만 규칙대로 추가.
 - 모든 변경은 `components/chat/` 안. 패키지 추가 없음. 비밀값 0건.
@@ -211,5 +226,5 @@ import ThreadView from "@/components/chat/ThreadView";
 ## 다음 할 일
 
 - [ ] (CONTRACTS.md · E 요청 시) 검색 결과로 이동 `focusMessageId?: number`
-- [ ] 스레드 패널 연결 확인 — 팀장님이 `ThreadPanel` 에 `<ThreadView />` 연결하면 화면에서 확인
+- [ ] (CONTRACTS.md · E 요청 예정) 검색 결과로 이동 `MessageList` 에 `focusMessageId?: number` — 팀장님이 따로 요청 주실 예정
 - [ ] 대량 메시지 시연용 시드 스크립트 — 위치·담당 팀장님과 협의 필요

@@ -4,8 +4,11 @@
 //          <MessageInput channelId={채널id} parentId={원본id} /> ← 스레드 답글
 //          <MessageInput channelId={채널id} extras={<AttachButton channelId={채널id} />} />
 // extras: 입력창 아래에 놓일 칸 — 첨부 버튼 · @멘션 (D, CONTRACTS.md)
+// @멘션 자동완성 (D-3 useMentionAutocomplete): "@" 를 치면 입력창 위에 이름 목록. ↑↓ 이동 · Enter/Tab 선택 · Esc 닫기
+//   목록이 열려 있을 때 Enter 는 훅이 먼저 가로채므로(stopPropagation) 메시지가 전송되지 않는다
 // Enter: 전송 / Shift+Enter: 줄바꿈 / 최대 6줄까지 늘어나고 그 이상은 입력창 안에서 스크롤
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useMentionAutocomplete } from "@/components/notifications/useMentionAutocomplete";
 import { MAX_LENGTH, sendMessage } from "./outbox";
 
 type Props = {
@@ -25,6 +28,8 @@ export default function MessageInput({
 }: Props) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  // @멘션 자동완성 (D) — 스레드 답글 입력창에도 자동 적용
+  const mention = useMentionAutocomplete({ channelId, textareaRef: ref, text, setText });
 
   const remaining = MAX_LENGTH - text.length;
   const tooLong = remaining < 0;
@@ -56,6 +61,7 @@ export default function MessageInput({
 
   return (
     <div>
+      {mention.popup}
       <div className="flex items-end gap-2">
         <textarea
           ref={ref}
