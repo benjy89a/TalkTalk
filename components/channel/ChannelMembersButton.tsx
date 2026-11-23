@@ -337,19 +337,22 @@ function MembersPanel({ channelId, onChanged, onDeleted }: Props) {
             </form>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={busyId !== null}
-                onClick={() => {
-                  setNewName(channel.name);
-                  setRenaming(true);
-                  setError(null);
-                }}
-                className={secondaryButton}
-              >
-                이름 바꾸기
-              </button>
-              {/* #general 은 DB 규칙상 지울 수 없어서 버튼도 숨긴다 */}
+              {/* #general 은 DB 규칙상 이름 변경·삭제 모두 불가 (002 · 003_security_fix) → 버튼도 숨긴다 */}
+              {isGeneral && <p className="text-xs text-gray-500">#general 은 이름을 바꾸거나 지울 수 없어요.</p>}
+              {!isGeneral && (
+                <button
+                  type="button"
+                  disabled={busyId !== null}
+                  onClick={() => {
+                    setNewName(channel.name);
+                    setRenaming(true);
+                    setError(null);
+                  }}
+                  className={secondaryButton}
+                >
+                  이름 바꾸기
+                </button>
+              )}
               {!isGeneral && (
                 <button
                   type="button"
