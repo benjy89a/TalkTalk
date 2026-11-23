@@ -247,6 +247,14 @@ export default function LoginForm() {
           {isSignup ? "로그인" : "회원가입"}
         </button>
       </p>
+      {!isSignup && (
+        <p className="mt-2 text-center text-sm">
+          {/* 비밀번호 찾기 (/login/forgot) — 로그인 전에도 열 수 있는 주소 */}
+          <a href="/login/forgot" className="text-gray-500 hover:text-[#1e325c] hover:underline">
+            비밀번호를 잊으셨나요?
+          </a>
+        </p>
+      )}
     </div>
   );
 }
