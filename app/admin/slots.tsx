@@ -3,24 +3,17 @@
 //   1) 위쪽에 import 한 줄 추가
 //   2) 해당 슬롯의 <Placeholder .../> 를 내 컴포넌트로 교체
 import Placeholder from "@/components/layout/Placeholder";
+import AdminUsers from "@/components/admin/AdminUsers";
+import AdminChannels from "@/components/admin/AdminChannels";
 
 /** [D] 사용자 목록 + 서비스 관리자 지정·해제 → components/admin/AdminUsers.tsx */
 export function AdminUsersSlot() {
-  return (
-    <Placeholder owner="D">
-      사용자 목록 (이름·이메일·가입일) + 서비스 관리자 지정·해제 — rpc(&quot;admin_list_users&quot;),
-      rpc(&quot;admin_set_app_admin&quot;)
-    </Placeholder>
-  );
+  return <AdminUsers />;
 }
 
 /** [D] 공개 채널 목록 + 이름 변경·삭제 → components/admin/AdminChannels.tsx */
 export function AdminChannelsSlot() {
-  return (
-    <Placeholder owner="D">
-      공개 채널 목록 (멤버 수) + 이름 변경·삭제 — rpc(&quot;admin_list_channels&quot;)
-    </Placeholder>
-  );
+  return <AdminChannels />;
 }
 
 /** [E] AI 키 설정 상태 → components/search/AiKeyStatus.tsx + app/api/ai/status */
