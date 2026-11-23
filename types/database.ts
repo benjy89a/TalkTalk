@@ -218,6 +218,28 @@ export type Database = {
       is_app_admin: { Args: Record<string, never>; Returns: boolean };
       can_manage_channel: { Args: { cid: string }; Returns: boolean };
       can_access_attachment_path: { Args: { path: string }; Returns: boolean };
+      // 003_admin.sql (서비스 관리자만 호출 가능, 아니면 에러)
+      admin_list_users: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          email: string;
+          created_at: string;
+          is_app_admin: boolean;
+        }[];
+      };
+      admin_set_app_admin: { Args: { uid: string; make_admin: boolean }; Returns: undefined };
+      admin_list_channels: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          created_by: string | null;
+          created_at: string;
+          member_count: number;
+        }[];
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
