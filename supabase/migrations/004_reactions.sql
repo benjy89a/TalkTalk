@@ -21,7 +21,10 @@
 
 create table public.reactions (
   message_id  bigint not null references public.messages (id) on delete cascade,
-  user_id     uuid   not null default auth.uid() references public.profiles (id) on delete cascade,
+  -- 주의: profiles 가 아니라 auth.users 를 참조한다.
+  --   profiles 를 참조하면 Supabase(PostgREST)가 reactions 를 "메시지↔사람 연결 테이블"로 보고
+  --   messages 에서 profiles(name) 을 붙여 읽는 기존 쿼리가 "관계가 2개" 에러(PGRST201)로 전부 실패한다.
+  user_id     uuid   not null default auth.uid() references auth.users (id) on delete cascade,
   emoji       text   not null check (char_length(emoji) between 1 and 16),
   channel_id  uuid   not null references public.channels (id) on delete cascade,
   created_at  timestamptz not null default now(),
