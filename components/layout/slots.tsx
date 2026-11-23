@@ -8,14 +8,15 @@
 // 현재 채널이 필요하면 useSelectedChannel() 로 읽는다 (props 로 받지 않는다).
 import ChannelActions from "@/components/channel/ChannelActions";
 import ChannelList from "@/components/channel/ChannelList";
+import ChannelMembersButton from "@/components/channel/ChannelMembersButton";
 import DmList from "@/components/channel/DmList";
 import MyProfile from "@/components/channel/MyProfile";
 import StartDmButton from "@/components/channel/StartDmButton";
 import ThreadView from "@/components/chat/ThreadView";
 import UnreadBadge from "@/components/notifications/UnreadBadge";
+import AiToolsBar from "@/components/search/AiToolsBar";
 import MessageSearch from "@/components/search/MessageSearch";
 import { useSelectedChannel } from "./ChannelContext";
-import Placeholder from "./Placeholder";
 
 // ───────── 사이드바 ─────────
 
@@ -73,9 +74,28 @@ export function HeaderSearchSlot() {
 // [D] 첨부 버튼·첨부 미리보기·@멘션은 칸 대신 MessageArea 의 MessageInput(extras)·MessageList(renderAttachments)에
 //     직접 연결했다 (연결 완료)
 
-/** [E] AI 요약 · 할 일 추출 버튼 */
+/** [C] 헤더의 "👥 멤버" 버튼: 멤버 보기 + (관리할 수 있으면) 초대·내보내기 (연결 완료)
+ *  DM 은 두 사람 고정이라 버튼을 보여주지 않는다. */
+export function HeaderMembersSlot() {
+  const { channelId, channelType, refreshChannelList, refreshDmList } = useSelectedChannel();
+  if (!channelId || channelType === null || channelType === "dm") return null;
+  return (
+    <ChannelMembersButton
+      key={channelId}
+      channelId={channelId}
+      onChanged={() => {
+        refreshChannelList();
+        refreshDmList();
+      }}
+    />
+  );
+}
+
+/** [E] AI 요약 · 할 일 추출 버튼 (연결 완료) */
 export function AiToolsSlot() {
-  return <Placeholder owner="E">AI 요약 · 할 일 추출 버튼 (app/api/ai)</Placeholder>;
+  const { channelId } = useSelectedChannel();
+  if (!channelId) return null;
+  return <AiToolsBar channelId={channelId} />;
 }
 
 // ───────── 스레드 패널 ─────────

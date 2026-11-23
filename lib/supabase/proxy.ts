@@ -37,11 +37,14 @@ export async function updateSession(request: NextRequest) {
   // /api 는 화면이 아니라 데이터 요청이다. 각 API 가 직접 401 을 돌려주므로 여기서는 건드리지 않는다.
   const isApi = pathname === "/api" || pathname.startsWith("/api/");
 
+  // 비밀번호 재설정 화면은 메일 링크로 들어오면서 로그인 상태가 되므로, 로그인해 있어도 보여줘야 한다
+  const isResetPage = pathname === "/login/reset";
+
   // 로그인 안 한 사용자 → 로그인 화면 (로그인 화면에 회원가입도 있다)
-  // 로그인한 사용자가 /login 에 오면 → 첫 화면
+  // 로그인한 사용자가 /login 에 오면 → 첫 화면 (단, 비밀번호 재설정 화면은 예외)
   let target: string | null = null;
   if (!loggedIn && !isLoginPage && !isApi) target = "/login";
-  else if (loggedIn && isLoginPage) target = "/";
+  else if (loggedIn && isLoginPage && !isResetPage) target = "/";
 
   if (target) {
     const redirect = NextResponse.redirect(new URL(target, request.url));

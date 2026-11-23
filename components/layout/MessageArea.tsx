@@ -7,18 +7,28 @@ import MessageInput from "@/components/chat/MessageInput";
 import AttachButton from "@/components/attachments/AttachButton";
 import { renderMessageAttachments } from "@/components/attachments/AttachmentList";
 import { useSelectedChannel } from "./ChannelContext";
-import { AiToolsSlot, HeaderSearchSlot } from "./slots";
+import { AiToolsSlot, HeaderMembersSlot, HeaderSearchSlot } from "./slots";
 
 export default function MessageArea() {
-  const { channelId, channelName, channelType, ready } = useSelectedChannel();
+  const { channelId, channelName, channelType, ready, setSidebarOpen } = useSelectedChannel();
 
   return (
     <main className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 px-4">
-        <span className="truncate font-semibold">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-gray-200 px-2 md:px-4">
+        {/* 휴대폰에서만: 사이드바(채널 목록) 열기 */}
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="채널 목록 열기"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-600 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:outline-none md:hidden"
+        >
+          ☰
+        </button>
+        <span className="min-w-0 flex-1 truncate font-semibold">
           {channelName ? `${channelType === "dm" ? "@" : "#"} ${channelName}` : ""}
         </span>
-        <div className="w-64">
+        <HeaderMembersSlot />
+        <div className="w-36 shrink-0 sm:w-64">
           <HeaderSearchSlot />
         </div>
       </header>
