@@ -11,6 +11,7 @@
 // 내 메시지(저장된 것)에 마우스를 올리면 "수정 · 삭제" → 수정은 말풍선 자리에서 바로 (Enter 저장 · Esc 취소)
 import { useState, type ReactNode } from "react";
 import { deleteMessage, editMessage } from "./messageActions";
+import { REACTION_EMOJIS, type ReactionSummary } from "./useReactions";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
 import { formatText } from "./formatText";
@@ -26,6 +27,9 @@ type Props = {
   renderAttachments?: (message: DisplayMessage) => ReactNode;
   // 좁은 칸(스레드 패널)용: 말풍선을 더 넓게(92%) 써서 글씨가 세로로 길게 꺾이지 않게
   wide?: boolean;
+  // 이모지 반응 (추가 기능 ③): 말풍선 아래 "👍 2" 칩 + 마우스를 올리면 😊+ 로 고르기
+  reactions?: ReactionSummary;
+  onReact?: (emoji: string, alreadyMine: boolean) => void;
 };
 
 const BUBBLE = "min-w-0 rounded-2xl px-3 py-1.5 text-sm leading-6 whitespace-pre-wrap break-words";
@@ -40,6 +44,8 @@ export default function MessageItem({
   active,
   renderAttachments,
   wide = false,
+  reactions,
+  onReact,
 }: Props) {
   // 말풍선 최대 폭: 채널 본문은 75%(카톡처럼), 좁은 스레드 패널은 92%
   const maxW = wide ? "max-w-[92%]" : "max-w-[75%]";
@@ -48,6 +54,7 @@ export default function MessageItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false); // 이모지 고르는 창
 
   async function saveEdit() {
     const next = draft.trim();
@@ -133,6 +140,72 @@ export default function MessageItem({
         답글 {thread.count}개 · {formatTime(thread.lastAt)}
       </button>
     ) : null;
+  // 이모지 반응: 마우스를 올리면 보이는 😊+ 버튼과 고르는 창 (저장된 메시지에만)
+  const canReact = !!onReact && !status && !editing;
+  const reactButton = canReact ? (
+    <button
+      type="button"
+      aria-label="이모지 반응 달기"
+      aria-expanded={picking}
+      onClick={() => setPicking((v) => !v)}
+      className={`${picking ? "visible" : "invisible"} shrink-0 rounded px-1 text-[13px] leading-4 text-gray-500 group-hover:visible hover:text-[#1e325c] focus-visible:visible`}
+    >
+      😊+
+    </button>
+  ) : null;
+  // 고르는 창은 버튼이 아니라 말풍선 줄 기준으로 띄운다 → 좁은 스레드 패널에서도 화면 밖으로 잘리지 않음
+  // (상대 메시지는 말풍선 왼쪽 끝부터, 내 메시지는 오른쪽 끝부터)
+  const picker =
+    canReact && picking ? (
+      <span
+        role="menu"
+        className={`absolute bottom-full z-20 mb-1 flex gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-1 shadow-md ${mine ? "right-0" : "left-0"}`}
+      >
+        {REACTION_EMOJIS.map((emoji) => {
+          const already = !!reactions?.find((r) => r.emoji === emoji && r.mine);
+          return (
+            <button
+              key={emoji}
+              type="button"
+              role="menuitem"
+              aria-label={`${emoji} 반응`}
+              onClick={() => {
+                setPicking(false);
+                onReact?.(emoji, already);
+              }}
+              className={`rounded-full px-1 text-lg leading-6 transition-transform hover:scale-125 ${already ? "bg-blue-50" : ""}`}
+            >
+              {emoji}
+            </button>
+          );
+        })}
+      </span>
+    ) : null;
+  // 말풍선 아래 반응 칩: 누르면 달기/취소, 내가 누른 건 파랗게
+  const reactionChips =
+    reactions && reactions.length > 0 ? (
+      <span className={`mt-1 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
+        {reactions.map((r) => (
+          <button
+            key={r.emoji}
+            type="button"
+            disabled={!onReact}
+            onClick={() => onReact?.(r.emoji, r.mine)}
+            aria-pressed={r.mine}
+            aria-label={`${r.emoji} ${r.count}명${r.mine ? " (나 포함)" : ""}`}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-4 transition-colors ${
+              r.mine
+                ? "border-blue-300 bg-blue-50 font-semibold text-blue-700 hover:bg-blue-100"
+                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            <span className="text-sm">{r.emoji}</span>
+            {r.count}
+          </button>
+        ))}
+      </span>
+    ) : null;
+
   const rowBg = active ? "bg-blue-50" : "";
   // 첨부 칸 (D) — 저장된 메시지에만
   const attachments = renderAttachments && !status ? renderAttachments(message) : null;
@@ -140,8 +213,13 @@ export default function MessageItem({
   if (mine) {
     return (
       <div className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
-        <div className={`flex ${maxW} items-end gap-1.5`}>
+        <div
+          className={`relative flex ${maxW} items-end gap-1.5`}
+          onMouseLeave={() => setPicking(false)}
+        >
+          {picker}
           {ownActions}
+          {reactButton}
           {replyButton}
           {side}
           {editing ? (
@@ -183,6 +261,7 @@ export default function MessageItem({
           )}
         </div>
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
+        {reactionChips}
         {replyLink}
       </div>
     );
@@ -203,12 +282,18 @@ export default function MessageItem({
       </div>
       <div className="min-w-0 flex-1">
         {first && <p className="mb-1 text-xs leading-5 font-semibold text-gray-700">{name}</p>}
-        <div className={`flex ${maxW} items-end gap-1.5`}>
+        <div
+          className={`relative flex ${maxW} items-end gap-1.5`}
+          onMouseLeave={() => setPicking(false)}
+        >
+          {picker}
           <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{formatText(message.content, false)}</p>
           {side}
+          {reactButton}
           {replyButton}
         </div>
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
+        {reactionChips}
         {replyLink}
       </div>
     </div>
