@@ -8,7 +8,10 @@ export type ChatMessage = Message & {
 
 // messages 를 불러올 때 보낸 사람 프로필도 같이 가져오는 select 문
 // (messages.user_id → profiles.id 관계를 따라감)
-export const MESSAGE_SELECT = "*, profiles(name, avatar_url)" as const;
+// ⚠️ "profiles!messages_user_id_fkey" 처럼 어느 연결인지 꼭 적는다.
+//    DB 에 reactions(이모지 반응) 테이블이 생기면서 messages ↔ profiles 연결이 2개가 되어,
+//    그냥 profiles(...) 라고 쓰면 "more than one relationship" 오류로 메시지를 하나도 못 불러온다.
+export const MESSAGE_SELECT = "*, profiles!messages_user_id_fkey(name, avatar_url)" as const;
 
 // 한 번에 불러오는 메시지 개수 (무한스크롤 B-6 에서도 같은 값 사용)
 export const PAGE_SIZE = 50;
