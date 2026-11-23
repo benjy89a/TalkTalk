@@ -13,6 +13,10 @@
 //   const { isUnread } = useUnread(channelId);
 //   <ChannelList selectedChannelId={channelId} onSelect={setChannelId} isUnread={isUnread} />
 //   isUnread 를 안 넘기면 굵게 표시 없이 그대로 동작한다.
+//
+// 배지 칸 (CONTRACTS.md — D 의 UnreadBadge 등을 채널 줄 오른쪽 끝에 끼움):
+//   <ChannelList ... renderBadge={(id) => <UnreadBadge channelId={id} />} />
+//   renderBadge 를 안 넘기거나 null 을 돌려주면 아무것도 그리지 않는다.
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Channel } from "@/types/database";
@@ -24,6 +28,7 @@ type Props = {
   onSelect: (channelId: string) => void;
   refreshKey?: number;
   isUnread?: (channelId: string) => boolean; // D 의 useUnread().isUnread 를 그대로 넘기면 된다
+  renderBadge?: (channelId: string) => React.ReactNode; // 채널 줄 오른쪽 끝 칸 (D 배지)
 };
 
 const rowClass =
@@ -34,6 +39,7 @@ export default function ChannelList({
   onSelect,
   refreshKey = 0,
   isUnread,
+  renderBadge,
 }: Props) {
   const [channels, setChannels] = useState<ChannelItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +130,7 @@ export default function ChannelList({
               </span>
               {isPrivate && <span className="sr-only">(비공개 채널)</span>}
               {unread && <span className="sr-only">(안 읽은 메시지 있음)</span>}
+              {renderBadge?.(channel.id)}
             </button>
           </li>
         );
