@@ -3,7 +3,7 @@
 ## E-2 키워드 검색
 
 - `MessageSearch.tsx`: 검색창·결과 목록. Enter 또는 검색 버튼으로 조회합니다.
-- `searchMessages.ts`: 로그인 확인 후 `messages.content`에 `ilike` 포함 검색을 수행합니다. 외부 AI API 키는 필요하지 않습니다.
+- `searchMessages.ts`: 로그인 확인 후 `messages.content`에 `ilike` 포함 검색을 수행합니다. 외부 AI API 키는 필요하지 않습니다. 소프트 삭제된 메시지(`deleted_at`이 있는 행)는 `.is("deleted_at", null)` 조건으로 제외합니다.
 - `searchMessages.test.mjs`: 실제 DB 대신 테스트용 응답으로 조회 조건·오류·취소 처리를 확인합니다.
 
 ### 연결 계약 — 팀장 협의 후 적용

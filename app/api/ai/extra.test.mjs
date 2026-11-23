@@ -168,6 +168,7 @@ test("검색: 테스트 해석 조건만 검증·컴파일, 사용자 채널·�
     ["messages", "gte", "created_at", "2026-11-15T15:00:00.000Z"],
     ["messages", "lt", "created_at", "2026-11-22T15:00:00.000Z"],
     ["messages", "limit", 3],
+    ["messages", "is", "deleted_at", null],
     ["messages", "order", "created_at", { ascending: false }],
     ["messages", "order", "id", { ascending: false }],
   ]) assert.ok(calls.some((call) => JSON.stringify(call) === JSON.stringify(expected)));
@@ -235,7 +236,7 @@ test("할 일: 원본·답글을 시간순으로 전달하고 내용·담당자�
   assert.deepEqual(await response.json(), { tasks: [task], messageCount: 2 });
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "eq" && call[2] === "channel_id" && call[3] === channelId));
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 10));
-  assert.equal(calls.some((call) => call[0] === "messages" && call[1] === "is"), false);
+  assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "is" && call[2] === "deleted_at" && call[3] === null));
 });
 
 test("할 일: 담당자·기한 미정은 null, 결과 없음은 연결 함수가 반환한 빈 배열", async () => {

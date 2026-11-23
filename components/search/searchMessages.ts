@@ -52,6 +52,8 @@ export async function searchMessages(
   let query = supabase
     .from("messages")
     .select("id, channel_id, content, created_at, parent_id, channels(name, type), profiles(name)")
+    // 소프트 삭제된 메시지는 본문이 남아 있을 수 있어 검색에서 제외한다.
+    .is("deleted_at", null)
     .ilike("content", `%${escapedKeyword}%`)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
