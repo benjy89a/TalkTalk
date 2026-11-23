@@ -6,6 +6,9 @@
 // status: "sending"(보내는 중, 흐리게) / "failed"(실패, 재전송·삭제) / 없음(저장됨)
 // thread: 답글 수·마지막 답글 시간 (B-5). 답글이 있으면 말풍선 아래 "답글 n개 · 시간",
 //         없으면 마우스를 올렸을 때만 말풍선 옆에 "답글" 버튼
+// renderAttachments: 말풍선 아래에 첨부를 그릴 칸 (D 첨부 기능이 채움, CONTRACTS.md)
+//                    보내는 중/실패 메시지는 아직 DB id 가 없으므로 그리지 않는다
+import type { ReactNode } from "react";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
 
@@ -17,11 +20,21 @@ type Props = {
   thread?: { count: number; lastAt: string };
   onOpenThread?: () => void;
   active?: boolean; // 지금 스레드 패널에 열린 메시지
+  renderAttachments?: (message: DisplayMessage) => ReactNode;
 };
 
 const BUBBLE = "min-w-0 rounded-2xl px-3 py-1.5 text-sm leading-6 whitespace-pre-wrap break-words";
 
-export default function MessageItem({ message, mine, first, last, thread, onOpenThread, active }: Props) {
+export default function MessageItem({
+  message,
+  mine,
+  first,
+  last,
+  thread,
+  onOpenThread,
+  active,
+  renderAttachments,
+}: Props) {
   const name = message.profiles?.name || "알 수 없음";
   const { status } = message;
 
@@ -69,6 +82,8 @@ export default function MessageItem({ message, mine, first, last, thread, onOpen
       </button>
     ) : null;
   const rowBg = active ? "bg-blue-50" : "";
+  // 첨부 칸 (D) — 저장된 메시지에만
+  const attachments = renderAttachments && !status ? renderAttachments(message) : null;
 
   if (mine) {
     return (
@@ -83,6 +98,7 @@ export default function MessageItem({ message, mine, first, last, thread, onOpen
             {message.content}
           </p>
         </div>
+        {attachments && <div className="mt-1 max-w-[75%]">{attachments}</div>}
         {replyLink}
       </div>
     );
@@ -108,6 +124,7 @@ export default function MessageItem({ message, mine, first, last, thread, onOpen
           {side}
           {replyButton}
         </div>
+        {attachments && <div className="mt-1 max-w-[75%]">{attachments}</div>}
         {replyLink}
       </div>
     </div>

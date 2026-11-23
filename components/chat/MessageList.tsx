@@ -1,11 +1,15 @@
 "use client";
 // [B] 채널 메시지 목록 (B-1 목록 · B-3 실시간 · B-5 답글 버튼 · B-6 무한스크롤)
 // 사용 예: <MessageList channelId={채널id} />
-import { useEffect, useMemo } from "react";
+//         <MessageList channelId={채널id} renderAttachments={(m) => <AttachmentList messageId={m.id} />} />
+// props (CONTRACTS.md)
+//   renderAttachments?(message) — 말풍선 아래 첨부 칸 (D). 저장된 메시지에만 불린다
+//   onOpenThread?(message)      — "답글"을 눌렀을 때 추가로 알려 받고 싶을 때. 스레드 패널은 이것 없이도 열린다
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useMarkAsRead } from "@/components/notifications/useMarkAsRead";
 import { CenterText, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
 import MessageRows from "./MessageRows";
-import { mergeWithOutbox, useOutbox } from "./outbox";
+import { mergeWithOutbox, useOutbox, type DisplayMessage } from "./outbox";
 import { closeThreadIfNotIn, openThread, useOpenThread } from "./threads";
 import { useChannelMessages } from "./useChannelMessages";
 import { useCurrentUserId } from "./useCurrentUserId";
@@ -13,9 +17,11 @@ import { useStickToBottom } from "./useStickToBottom";
 
 type Props = {
   channelId: string;
+  renderAttachments?: (message: DisplayMessage) => ReactNode;
+  onOpenThread?: (message: DisplayMessage) => void;
 };
 
-export default function MessageList({ channelId }: Props) {
+export default function MessageList({ channelId, renderAttachments, onOpenThread }: Props) {
   const { messages: loaded, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder } =
     useChannelMessages(channelId);
   const outbox = useOutbox();
@@ -87,8 +93,13 @@ export default function MessageList({ channelId }: Props) {
               messages={messages}
               myId={myId}
               replyStats={replyStats}
-              onOpenThread={(rootId) => openThread(channelId, rootId)}
+              onOpenThread={(rootId) => {
+                openThread(channelId, rootId);
+                const m = messages.find((x) => x.id === rootId);
+                if (m && onOpenThread) onOpenThread(m);
+              }}
               activeRootId={openedThread?.channelId === channelId ? openedThread.rootId : null}
+              renderAttachments={renderAttachments}
             />
           </div>
         </div>
