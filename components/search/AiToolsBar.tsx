@@ -3,6 +3,7 @@
 // 팀장이 slots.tsx의 AiToolsSlot에서 연결한다. 실제 사용에는 서버의 EXAONE 키가 필요하다.
 import { useEffect, useRef, useState } from "react";
 import { requestChannelSummary, SummaryRequestError } from "./summaryClient";
+import AiExtraTools from "./AiExtraTools";
 
 type Props = { channelId: string | null };
 type SummaryState =
@@ -13,7 +14,10 @@ type SummaryState =
 
 export default function AiToolsBar({ channelId }: Props) {
   // 채널 변경 시 이전 채널의 결과·요청 상태를 함께 초기화한다.
-  return <ChannelSummary key={channelId ?? "no-channel"} channelId={channelId} />;
+  return <div className="space-y-4">
+    <ChannelSummary key={channelId ?? "no-channel"} channelId={channelId} />
+    <AiExtraTools channelId={channelId} />
+  </div>;
 }
 
 function ChannelSummary({ channelId }: Props) {

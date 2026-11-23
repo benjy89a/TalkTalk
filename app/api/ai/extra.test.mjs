@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleNaturalSearch, handleExtractTasks, EXTRA_MAX_BODY_BYTES } from "./extra.ts";
+import { createExaoneExtra, handleNaturalSearch, handleExtractTasks, EXTRA_MAX_BODY_BYTES } from "./extra.ts";
 
 const channelId = "11111111-1111-4111-8111-111111111111";
 const handlers = [
@@ -13,6 +13,7 @@ const source = [
   { id: 10, content: "재문: 배포 점검을 2026-11-30까지 진행", created_at: "2026-11-23T01:00:00Z", parent_id: null },
 ];
 const task = { content: "배포 점검", assignee: "재문", dueDate: "2026-11-30", messageIds: [10] };
+const TEST_CREDENTIAL = "unit-test-only";
 
 function request(body, options = {}) {
   return new Request("http://localhost/api/ai/test", {
@@ -288,4 +289,40 @@ test("할 일: 기본 조회 50개 및 DB·추출 함수 오류 일반화", asyn
   const good = mockClient();
   const generic = await expectError(await handleExtractTasks(request({ channelId }), good.createClient, async () => { throw new Error("private model detail"); }), 500, "INTERNAL_ERROR");
   assert.doesNotMatch(JSON.stringify(generic), /private model detail/);
+});
+
+test("EXAONE 주입 후에도 로그인·채널 권한·빈 대화 실패에는 외부 호출하지 않음", async () => {
+  let calls = 0;
+  const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => { calls += 1; throw new Error("must not fetch"); } });
+  for (const [handle, input, generate] of [
+    [handleNaturalSearch, { query: "배포", channelId }, adapter.interpret],
+    [handleExtractTasks, { channelId }, adapter.extract],
+  ]) {
+    await expectError(await handle(request(input), mockClient({ user: null }).createClient, generate), 401, "UNAUTHORIZED");
+    await expectError(await handle(request(input), mockClient({ member: null }).createClient, generate), 403, "FORBIDDEN");
+  }
+  await expectError(await handleExtractTasks(request({ channelId }), mockClient({ rows: [] }).createClient, adapter.extract), 422, "NO_MESSAGES");
+  assert.equal(calls, 0);
+});
+
+test("EXAONE 조건 해석/추출의 가짜 응답을 실제 handler 경계로 전달", async () => {
+  let calls = 0;
+  const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => Response.json({ choices: [{
+    finish_reason: "stop", message: { content: JSON.stringify(calls++ === 0 ? plan : { tasks: [task] }) },
+  }] }) });
+  const search = await handleNaturalSearch(request({ query: "배포", channelId }), mockClient().createClient, adapter.interpret);
+  assert.equal(search.status, 200);
+  assert.deepEqual((await search.json()).interpretation, plan);
+  const extracted = await handleExtractTasks(request({ channelId }), mockClient().createClient, adapter.extract);
+  assert.equal(extracted.status, 200);
+  assert.deepEqual(await extracted.json(), { tasks: [task], messageCount: 2 });
+  assert.equal(calls, 2);
+});
+
+test("EXAONE 인증 오류는 정제한 JSON·no-store로 전달하고 DB 검색 미실행", async () => {
+  const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => new Response("private diagnostic", { status: 401 }) });
+  const { createClient, calls } = mockClient();
+  const body = await expectError(await handleNaturalSearch(request({ query: "배포" }), createClient, adapter.interpret), 502, "AI_AUTH_FAILED");
+  assert.doesNotMatch(JSON.stringify(body), /private|unit-test-only/);
+  assert.equal(calls.some((call) => call[0] === "from" && call[1] === "messages"), false);
 });

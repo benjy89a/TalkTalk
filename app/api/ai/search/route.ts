@@ -1,8 +1,8 @@
 // POST /api/ai/search: { query, channelId?, limit? }
-// 실제 AI 자연어 해석은 미연결이며, 키·호출 코드를 브라우저에 두지 않는다.
+// EXAONE은 검색 조건만 해석한다. 실제 결과는 로그인 RLS 범위의 DB 메시지다.
 import { createClient } from "@/lib/supabase/server";
-import { handleNaturalSearch } from "../extra";
+import { createExaoneExtra, handleNaturalSearch } from "../extra";
 
 export async function POST(request: Request) {
-  return handleNaturalSearch(request, createClient);
+  return handleNaturalSearch(request, createClient, createExaoneExtra({ apiKey: process.env.EXAONE_API_KEY }).interpret);
 }
