@@ -197,6 +197,13 @@
 - **팀장님께 요청 필요** (`components/layout/ThreadPanel.tsx`, 2줄):
   `const width = useThreadWidth();` + `<aside className="relative ... (w-96 빼기)" style={{ width }}><ThreadResizeHandle />`
 
+### 16. 텍스트 강조 (추가 기능 ① — 계섭님이 "쉬운 것부터" 순서로 진행 요청)
+- 새 패키지 없이 `formatText.tsx` 로 직접 해석 (패키지 추가는 팀장 협의 사항이라 피함). HTML 문자열이 아니라 React 요소로만 만들어 `<b>` 같은 글은 그대로 글자로 보임(안전).
+- 지원: `**굵게**` · `*기울임*`/`_기울임_`(단어 중간 snake_case 는 제외) · `***굵고 기울임***` · `~~취소선~~` · `{빨강:글자}`(빨강·파랑·초록·주황·보라 / 영어도) · `` `코드` `` · 링크 자동(새 탭, 끝 마침표 제외)
+- 색은 말풍선 배경에 맞춰: 내 남색 말풍선은 밝은 색(red-300), 상대 회색 말풍선은 진한 색(red-600)
+- 입력창 단축키: 글자 선택 후 Cmd/Ctrl+B 굵게 · +I 기울임 · +Shift+X 취소선 (다시 누르면 풀림)
+- 검증(비공개 테스트 채널): 모든 서식 ✅, 링크 `https://example.com/test?a=1` (끝 `.` 제외) ✅, snake_case 그대로 ✅, `<b>태그</b>` 글자 그대로 ✅, Cmd+B 로 "중요" → `**중요**` ✅, 내 말풍선 밝은 빨강 ✅
+
 ### 팀 규정 점검
 - CLAUDE.md · PR 템플릿 · TECH_SPEC · FINAL_CHECKLIST 와 대조 → 위반 없음. `MessageItem.tsx` 에 빠져 있던 `"use client"` 만 규칙대로 추가.
 - 모든 변경은 `components/chat/` 안. 패키지 추가 없음. 비밀값 0건.

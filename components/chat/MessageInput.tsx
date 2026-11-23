@@ -9,6 +9,7 @@
 // Enter: 전송 / Shift+Enter: 줄바꿈 / 최대 6줄까지 늘어나고 그 이상은 입력창 안에서 스크롤
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMentionAutocomplete } from "@/components/notifications/useMentionAutocomplete";
+import { wrapSelection } from "./formatText";
 import { MAX_LENGTH, sendMessage } from "./outbox";
 
 type Props = {
@@ -68,6 +69,19 @@ export default function MessageInput({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // 서식 단축키: 글자를 선택하고 Cmd/Ctrl+B 굵게, +I 기울임, +Shift+X 취소선
+    if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      const mark = k === "b" && !e.shiftKey ? "**" : k === "i" && !e.shiftKey ? "*" : k === "x" && e.shiftKey ? "~~" : null;
+      if (mark) {
+        e.preventDefault();
+        const el = e.currentTarget;
+        const next = wrapSelection(text, el.selectionStart, el.selectionEnd, mark);
+        setText(next.text);
+        requestAnimationFrame(() => el.setSelectionRange(next.start, next.end));
+        return;
+      }
+    }
     if (e.key !== "Enter" || e.shiftKey) return;
     // 한글 조합 중 Enter 는 무시 (안 그러면 같은 메시지가 두 번 전송됨)
     if (e.nativeEvent.isComposing) return;

@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
+import { formatText } from "./formatText";
 
 type Props = {
   message: DisplayMessage;
@@ -102,7 +103,7 @@ export default function MessageItem({
             className={`${BUBBLE} bg-[#1e325c] text-white ${status ? "opacity-60" : ""}`}
             aria-busy={status === "sending" || undefined}
           >
-            {message.content}
+            {formatText(message.content, true)}
           </p>
         </div>
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
@@ -127,7 +128,7 @@ export default function MessageItem({
       <div className="min-w-0 flex-1">
         {first && <p className="mb-1 text-xs leading-5 font-semibold text-gray-700">{name}</p>}
         <div className={`flex ${maxW} items-end gap-1.5`}>
-          <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{message.content}</p>
+          <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{formatText(message.content, false)}</p>
           {side}
           {replyButton}
         </div>
