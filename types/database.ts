@@ -1,4 +1,4 @@
-// DB 테이블 모양을 TypeScript 로 적어둔 파일. supabase/migrations/001_init.sql 과 반드시 같아야 한다.
+// DB 테이블 모양을 TypeScript 로 적어둔 파일. supabase/migrations/ 의 SQL 과 반드시 같아야 한다.
 // 수정은 팀장(A)만. 스키마를 바꾸면 이 파일도 함께 바꾼다.
 //
 // 자주 쓰는 모양은 맨 아래에 짧은 이름으로 꺼내 두었다:
@@ -155,6 +155,30 @@ export type Database = {
           },
         ];
       };
+      // 서비스 관리자 목록 (002_roles.sql). 화면에서는 읽기만 가능, 추가·삭제는 SQL Editor 로만.
+      app_admins: {
+        Row: {
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "app_admins_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       attachments: {
         Row: {
           id: string;
@@ -190,6 +214,9 @@ export type Database = {
       is_channel_member: { Args: { cid: string }; Returns: boolean };
       is_channel_admin: { Args: { cid: string }; Returns: boolean };
       can_add_channel_member: { Args: { cid: string; uid: string }; Returns: boolean };
+      // 002_roles.sql
+      is_app_admin: { Args: Record<string, never>; Returns: boolean };
+      can_manage_channel: { Args: { cid: string }; Returns: boolean };
       can_access_attachment_path: { Args: { path: string }; Returns: boolean };
     };
     Enums: { [_ in never]: never };
@@ -205,5 +232,6 @@ export type Channel = Tables["channels"]["Row"];
 export type ChannelMember = Tables["channel_members"]["Row"];
 export type Message = Tables["messages"]["Row"];
 export type Attachment = Tables["attachments"]["Row"];
+export type AppAdmin = Tables["app_admins"]["Row"];
 
 export type NewMessage = Tables["messages"]["Insert"];
