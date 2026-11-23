@@ -2,7 +2,7 @@
 // [B] 스레드 패널 내용 (B-5) — 원본 메시지 + 답글 목록 + 답글 입력창
 // 사용 예 (오른쪽 스레드 패널 칸에): <ThreadView />
 //   → 메시지 목록에서 "답글"을 누르면 그 메시지의 스레드가 여기에 열린다 (threads.ts 공유 저장소)
-//   → 스레드 패널 바깥을 클릭하거나 Esc 를 누르면 닫힌다
+//   → 스레드 패널 바깥을 클릭하거나 Esc 를 누르면 닫힌다 (멘션 목록이 열려 있으면 Esc 는 목록만 닫음)
 //     (다른 메시지의 "답글" 버튼[data-thread-trigger]을 누르면 닫지 않고 그 스레드로 바뀐다)
 import { useEffect, useMemo, useRef } from "react";
 import { CenterText, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
@@ -47,7 +47,11 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
       closeThread();
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") closeThread();
+      if (e.key !== "Escape") return;
+      // 멘션 목록(D 훅)이 이 Esc 로 목록을 닫았으면(preventDefault) 스레드는 닫지 않는다
+      // 훅은 입력창에 직접 붙어 있어서 이 문서 단계 리스너보다 먼저 실행된다
+      if (e.defaultPrevented) return;
+      closeThread();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
