@@ -4,6 +4,9 @@ import type { Message, Profile } from "@/types/database";
 // 화면에 보여줄 메시지 한 줄 = messages 행 + 보낸 사람 프로필(이름·아바타)
 export type ChatMessage = Message & {
   profiles: Pick<Profile, "name" | "avatar_url"> | null;
+  // 팀장님 005(DB 에만 적용, types/database.ts 반영 전): 내용을 고치면 DB 가 자동으로 수정 시각을 적는다
+  // → types/database.ts 에 들어오면 이 줄은 지워도 된다
+  edited_at?: string | null;
 };
 
 // messages 를 불러올 때 보낸 사람 프로필도 같이 가져오는 select 문

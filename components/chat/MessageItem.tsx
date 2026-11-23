@@ -96,6 +96,8 @@ export default function MessageItem({
     ) : null;
 
   // 말풍선 옆 작은 글씨: 실패면 재전송·삭제, 묶음의 마지막이면 시간
+  // 내용을 고친 적 있는 저장된 메시지 (팀장님 005: DB 가 수정 시각 자동 기록)
+  const edited = !status && !!message.edited_at;
   const side =
     status === "failed" ? (
       <span className="flex shrink-0 flex-col items-end text-[11px] leading-4 text-red-600" role="alert">
@@ -109,10 +111,16 @@ export default function MessageItem({
           </button>
         </span>
       </span>
-    ) : last && status !== "sending" ? (
-      <time dateTime={message.created_at} className="shrink-0 text-[11px] leading-4 whitespace-nowrap text-gray-500">
-        {formatTime(message.created_at)}
-      </time>
+    ) : (last && status !== "sending") || edited ? (
+      // 수정된 메시지는 시간 위에 "수정됨" (같은 사람이 연달아 보내 시간이 숨은 줄에도 "수정됨"은 보인다)
+      <span className={`flex shrink-0 flex-col text-[11px] leading-4 whitespace-nowrap text-gray-500 ${mine ? "items-end" : "items-start"}`}>
+        {edited && (
+          <span title={`수정: ${formatTime(message.edited_at!)}`} aria-label="수정된 메시지">
+            수정됨
+          </span>
+        )}
+        {last && status !== "sending" && <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>}
+      </span>
     ) : null;
 
   const hasReplies = !!thread && thread.count > 0;
