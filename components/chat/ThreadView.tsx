@@ -26,7 +26,11 @@ export default function ThreadView() {
 }
 
 function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number }) {
-  const { root, replies: loaded, omitted, status, live } = useThreadMessages(rootId);
+  const { root, replies: loaded, omitted, rootDeleted, status, live } = useThreadMessages(rootId);
+  // 원본 메시지가 삭제되면 스레드를 닫는다 (답글도 DB 에서 같이 지워짐)
+  useEffect(() => {
+    if (rootDeleted) closeThread();
+  }, [rootDeleted]);
   const outbox = useOutbox();
   const myId = useCurrentUserId();
   // 불러온 답글 + 실시간 수신 + 내가 방금 보낸 답글(보내는 중 포함)

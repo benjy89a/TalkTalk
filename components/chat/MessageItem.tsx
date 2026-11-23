@@ -8,7 +8,9 @@
 //         없으면 마우스를 올렸을 때만 말풍선 옆에 "답글" 버튼
 // renderAttachments: 말풍선 아래에 첨부를 그릴 칸 (D 첨부 기능이 채움, CONTRACTS.md)
 //                    보내는 중/실패 메시지는 아직 DB id 가 없으므로 그리지 않는다
-import type { ReactNode } from "react";
+// 내 메시지(저장된 것)에 마우스를 올리면 "수정 · 삭제" → 수정은 말풍선 자리에서 바로 (Enter 저장 · Esc 취소)
+import { useState, type ReactNode } from "react";
+import { deleteMessage, editMessage } from "./messageActions";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
 import { formatText } from "./formatText";
@@ -43,6 +45,48 @@ export default function MessageItem({
   const maxW = wide ? "max-w-[92%]" : "max-w-[75%]";
   const name = message.profiles?.name || "알 수 없음";
   const { status } = message;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function saveEdit() {
+    const next = draft.trim();
+    if (!next || busy) return;
+    if (next === message.content) return setEditing(false);
+    setBusy(true);
+    const ok = await editMessage(message.id, next);
+    setBusy(false);
+    if (ok) setEditing(false);
+    else alert("메시지를 수정하지 못했어요. 잠시 후 다시 시도해 주세요.");
+  }
+
+  async function onDelete() {
+    const replies = thread?.count ?? 0;
+    const ask = replies > 0 ? `이 메시지를 삭제할까요?\n답글 ${replies}개도 함께 삭제돼요.` : "이 메시지를 삭제할까요?";
+    if (!window.confirm(ask)) return;
+    const ok = await deleteMessage(message.id, message.client_id);
+    if (!ok) alert("메시지를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
+  }
+
+  // 내 메시지(저장 완료)에만: 마우스를 올리면 보이는 "수정 · 삭제"
+  const ownActions =
+    mine && !status && !editing ? (
+      <span className="invisible flex shrink-0 gap-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible focus-within:visible">
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(message.content);
+            setEditing(true);
+          }}
+          className="rounded px-1 hover:text-[#1e325c]"
+        >
+          수정
+        </button>
+        <button type="button" onClick={onDelete} className="rounded px-1 hover:text-red-600">
+          삭제
+        </button>
+      </span>
+    ) : null;
 
   // 말풍선 옆 작은 글씨: 실패면 재전송·삭제, 묶음의 마지막이면 시간
   const side =
@@ -97,14 +141,46 @@ export default function MessageItem({
     return (
       <div className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
         <div className={`flex ${maxW} items-end gap-1.5`}>
+          {ownActions}
           {replyButton}
           {side}
-          <p
-            className={`${BUBBLE} bg-[#1e325c] text-white ${status ? "opacity-60" : ""}`}
-            aria-busy={status === "sending" || undefined}
-          >
-            {formatText(message.content, true)}
-          </p>
+          {editing ? (
+            <div className="flex min-w-0 flex-1 flex-col items-end gap-1">
+              <textarea
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault(); // 스레드 패널의 "Esc 로 닫기"가 같이 실행되지 않게
+                    setEditing(false);
+                  } else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    saveEdit();
+                  }
+                }}
+                rows={Math.min(6, draft.split("\n").length)}
+                aria-label="메시지 수정"
+                className="w-72 max-w-full resize-none rounded-2xl border border-[#1e325c] bg-white px-3 py-1.5 text-sm leading-6 text-gray-900 focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:outline-none"
+              />
+              <span className="flex gap-2 text-[11px] leading-4 text-gray-500">
+                Enter 저장 · Esc 취소
+                <button type="button" onClick={() => setEditing(false)} className="font-medium hover:text-gray-800">
+                  취소
+                </button>
+                <button type="button" onClick={saveEdit} disabled={busy} className="font-medium text-[#1e325c] hover:underline disabled:opacity-50">
+                  저장
+                </button>
+              </span>
+            </div>
+          ) : (
+            <p
+              className={`${BUBBLE} bg-[#1e325c] text-white ${status ? "opacity-60" : ""}`}
+              aria-busy={status === "sending" || undefined}
+            >
+              {formatText(message.content, true)}
+            </p>
+          )}
         </div>
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
         {replyLink}

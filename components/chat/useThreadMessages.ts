@@ -12,6 +12,12 @@ import {
   type LiveStatus,
   type LoadStatus,
 } from "./chatData";
+import {
+  DELETED_EVENT,
+  EDITED_EVENT,
+  type DeletedDetail,
+  type EditedDetail,
+} from "./messageActions";
 import { retryAllFailed } from "./outbox";
 import { MAX_RENDERED, MESSAGE_SELECT, type ChatMessage } from "./types";
 
@@ -24,6 +30,7 @@ export function useThreadMessages(rootId: number) {
   const [root, setRoot] = useState<ChatMessage | null>(null);
   const [replies, setReplies] = useState<ChatMessage[]>([]);
   const [omitted, setOmitted] = useState(0); // 화면에 안 보여준 오래된 답글 수
+  const [rootDeleted, setRootDeleted] = useState(false); // 원본이 삭제됨 → 스레드를 닫는다
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [liveState, setLiveState] = useState<{ rootId: number; status: LiveStatus }>();
   const online = useOnline();
@@ -45,6 +52,7 @@ export function useThreadMessages(rootId: number) {
       setRoot(null);
       setReplies([]);
       setOmitted(0);
+      setRootDeleted(false);
       lastIdRef.current = undefined;
 
       const [rootRes, repliesRes, countRes] = await Promise.all([
@@ -117,6 +125,35 @@ export function useThreadMessages(rootId: number) {
     catchUpRef.current = catchUp;
   }, [catchUp]);
 
+  // ---- 수정 · 삭제 반영 ----
+  const applyEdit = useCallback(
+    (id: number, content: string) => {
+      if (id === rootId) setRoot((r) => (r ? { ...r, content } : r));
+      else setReplies((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content } : m)) : prev));
+    },
+    [rootId],
+  );
+  const applyDelete = useCallback(
+    (id: number) => {
+      if (id === rootId) setRootDeleted(true);
+      else setReplies((prev) => (prev.some((m) => m.id === id) ? prev.filter((m) => m.id !== id) : prev));
+    },
+    [rootId],
+  );
+  useEffect(() => {
+    const onEdited = (e: Event) => {
+      const { id, content } = (e as CustomEvent<EditedDetail>).detail;
+      applyEdit(id, content);
+    };
+    const onDeleted = (e: Event) => applyDelete((e as CustomEvent<DeletedDetail>).detail.id);
+    window.addEventListener(EDITED_EVENT, onEdited);
+    window.addEventListener(DELETED_EVENT, onDeleted);
+    return () => {
+      window.removeEventListener(EDITED_EVENT, onEdited);
+      window.removeEventListener(DELETED_EVENT, onDeleted);
+    };
+  }, [applyEdit, applyDelete]);
+
   // ---- 실시간: 이 스레드의 새 답글 ----
   useEffect(() => {
     const supabase = createClient();
@@ -135,6 +172,29 @@ export function useThreadMessages(rootId: number) {
           setReplies((prev) => mergeById(prev, [msg]));
         },
       )
+      // 답글 수정
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `parent_id=eq.${rootId}` },
+        (payload) => {
+          const row = payload.new as Message;
+          if (active) applyEdit(row.id, row.content);
+        },
+      )
+      // 원본 수정
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `id=eq.${rootId}` },
+        (payload) => {
+          const row = payload.new as Message;
+          if (active) applyEdit(row.id, row.content);
+        },
+      )
+      // 삭제 (알림에는 id 만 온다)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
+        const id = (payload.old as { id?: number }).id;
+        if (active && id !== undefined) applyDelete(id);
+      })
       .subscribe((s) => {
         if (!active) return;
         if (s === "SUBSCRIBED") {
@@ -149,7 +209,7 @@ export function useThreadMessages(rootId: number) {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [rootId]);
+  }, [rootId, applyEdit, applyDelete]);
 
   // 탭으로 돌아왔을 때 / 와이파이가 다시 켜졌을 때도 받아오기
   useEffect(() => {
@@ -164,5 +224,5 @@ export function useThreadMessages(rootId: number) {
     };
   }, [catchUp]);
 
-  return { root, replies, omitted, status, live };
+  return { root, replies, omitted, rootDeleted, status, live };
 }

@@ -17,6 +17,12 @@ import {
   type LiveStatus,
   type LoadStatus,
 } from "./chatData";
+import {
+  DELETED_EVENT,
+  EDITED_EVENT,
+  type DeletedDetail,
+  type EditedDetail,
+} from "./messageActions";
 import { retryAllFailed } from "./outbox";
 import {
   CATCH_UP_LIMIT,
@@ -42,7 +48,8 @@ function rememberLastId(channelId: string, list: { id: number }[]) {
 export function useChannelMessages(channelId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [replyStats, setReplyStats] = useState<ReplyStats>({});
-  const seenReplyIds = useRef(new Set<number>()); // 같은 답글을 두 번 세지 않게
+  // 같은 답글을 두 번 세지 않게 + 답글이 지워지면 어느 원본의 숫자를 줄일지 알기 위해 (답글 id → 원본 id)
+  const seenReplyIds = useRef(new Map<number, number>());
   const [status, setStatus] = useState<LoadStatus>("loading");
   // 어느 채널의 연결 상태인지 같이 기억 → 채널이 바뀌면 새 채널은 자동으로 "connecting"
   const [liveState, setLiveState] = useState<{ channelId: string; status: LiveStatus }>();
@@ -74,7 +81,7 @@ export function useChannelMessages(channelId: string) {
   const addReplies = useCallback((rows: ReplyRow[]) => {
     const fresh = rows.filter((r) => r.parent_id !== null && !seenReplyIds.current.has(r.id));
     if (fresh.length === 0) return;
-    for (const r of fresh) seenReplyIds.current.add(r.id);
+    for (const r of fresh) seenReplyIds.current.set(r.id, r.parent_id as number);
     setReplyStats((prev) => {
       const next = { ...prev };
       for (const r of fresh) {
@@ -118,7 +125,7 @@ export function useChannelMessages(channelId: string) {
       setMessages([]);
       setReplyStats({});
       setHasMore(false);
-      seenReplyIds.current = new Set();
+      seenReplyIds.current = new Map();
 
       // 최근 50개 = id 큰 순으로 50개 → 화면에는 오래된 순으로 보여준다
       const { data, error } = await supabase
@@ -205,6 +212,49 @@ export function useChannelMessages(channelId: string) {
   // 실시간 구독(아래)이 델타 동기화(catchUp, 더 아래)를 부를 수 있게 미리 자리를 만들어 둔다
   const catchUpRef = useRef<() => void>(() => {});
 
+  // ---- 수정 · 삭제 반영 (내가 한 것: 브라우저 신호 / 남이 한 것: Realtime) ----
+  const applyEdit = useCallback((id: number, content: string) => {
+    setMessages((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content } : m)) : prev));
+  }, []);
+
+  const applyDelete = useCallback((id: number) => {
+    setMessages((prev) => (prev.some((m) => m.id === id) ? prev.filter((m) => m.id !== id) : prev));
+    // 답글이 지워졌으면 원본의 "답글 n개" 를 하나 줄인다
+    const root = seenReplyIds.current.get(id);
+    if (root !== undefined) {
+      seenReplyIds.current.delete(id);
+      setReplyStats((prev) => {
+        const cur = prev[root];
+        if (!cur) return prev;
+        const next = { ...prev };
+        if (cur.count <= 1) delete next[root];
+        else next[root] = { ...cur, count: cur.count - 1 };
+        return next;
+      });
+    }
+    // 원본이 지워졌으면 그 원본의 답글 수도 지운다 (답글은 DB 가 같이 지움)
+    setReplyStats((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onEdited = (e: Event) => {
+      const { id, content } = (e as CustomEvent<EditedDetail>).detail;
+      applyEdit(id, content);
+    };
+    const onDeleted = (e: Event) => applyDelete((e as CustomEvent<DeletedDetail>).detail.id);
+    window.addEventListener(EDITED_EVENT, onEdited);
+    window.addEventListener(DELETED_EVENT, onDeleted);
+    return () => {
+      window.removeEventListener(EDITED_EVENT, onEdited);
+      window.removeEventListener(DELETED_EVENT, onDeleted);
+    };
+  }, [applyEdit, applyDelete]);
+
   // ---- 실시간 수신 (B-3) ----
   useEffect(() => {
     const supabase = createClient();
@@ -228,6 +278,20 @@ export function useChannelMessages(channelId: string) {
           applyRows([{ ...row, profiles }]);
         },
       )
+      // 누군가 메시지를 수정 → 내용만 바꾼다
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `channel_id=eq.${channelId}` },
+        (payload) => {
+          const row = payload.new as Message;
+          if (active) applyEdit(row.id, row.content);
+        },
+      )
+      // 누군가 메시지를 삭제 → 삭제 알림에는 id 만 온다 (Supabase 는 삭제 알림을 채널로 거를 수 없음)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, (payload) => {
+        const id = (payload.old as { id?: number }).id;
+        if (active && id !== undefined) applyDelete(id);
+      })
       .subscribe((s, err) => {
         if (!active) return;
         if (s === "SUBSCRIBED") {
@@ -246,7 +310,7 @@ export function useChannelMessages(channelId: string) {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [channelId, applyRows]);
+  }, [channelId, applyRows, applyEdit, applyDelete]);
 
   // ---- 델타 동기화 (B-4) ----
   const catchingUp = useRef(false);
