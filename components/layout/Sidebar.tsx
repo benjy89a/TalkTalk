@@ -5,7 +5,6 @@ import {
   SidebarChannelListSlot,
   SidebarDmListSlot,
   SidebarProfileSlot,
-  SidebarUnreadSlot,
 } from "./slots";
 
 export default function Sidebar() {
@@ -19,9 +18,8 @@ export default function Sidebar() {
         <section>
           <h2 className="mb-2 px-1 text-xs font-semibold uppercase text-white/60">채널</h2>
           <SidebarChannelListSlot />
-          <div className="mt-2 space-y-2">
+          <div className="mt-2">
             <SidebarChannelActionsSlot />
-            <SidebarUnreadSlot />
           </div>
         </section>
 
