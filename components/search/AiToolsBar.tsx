@@ -1,6 +1,6 @@
 "use client";
 // 사용 예: <AiToolsBar channelId={선택한채널id} />
-// 팀장이 slots.tsx의 AiToolsSlot에서 연결한다. 현재 실제 AI 요약은 미연결이다.
+// 팀장이 slots.tsx의 AiToolsSlot에서 연결한다. 실제 사용에는 서버의 EXAONE 키가 필요하다.
 import { useEffect, useRef, useState } from "react";
 import { requestChannelSummary, SummaryRequestError } from "./summaryClient";
 
@@ -85,10 +85,10 @@ function ChannelSummary({ channelId }: Props) {
         )}
       </div>
       <p className="text-xs leading-5 text-gray-600">
-        AI 연결 준비 단계입니다. 현재 실제 요약은 제공하지 않으며 외부 AI 호출은 하지 않습니다.
+        선택한 범위의 대화가 외부 EXAONE으로 전송됩니다. 허용된 대화에만 사용해 주세요. 서버 설정과 API 한도에 따라 이용이 제한될 수 있습니다.
         {!channelId && " 먼저 채널을 선택해 주세요."}
       </p>
-      {state.status === "loading" && <p role="status" className="text-gray-600">로그인과 채널 대화를 확인하고 있습니다.</p>}
+      {state.status === "loading" && <p role="status" className="text-gray-600">로그인·채널 권한을 확인하고 대화를 요약하고 있습니다.</p>}
       {state.status === "error" && (
         <p
           role={state.code === "AI_NOT_CONNECTED" ? "status" : "alert"}

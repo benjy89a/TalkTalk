@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleSummarize, MAX_BODY_BYTES } from "./handler.ts";
+import { createExaoneSummary, handleSummarize, MAX_BODY_BYTES } from "./handler.ts";
 
 const channelId = "11111111-1111-4111-8111-111111111111";
+// 실제 발급 키가 아닌 가짜 HTTP 테스트 전용 값이다.
+const TEST_CREDENTIAL = "unit-test-only";
 function request(body, options = {}) {
   return new Request("http://localhost/api/ai/summarize", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -144,7 +146,7 @@ test("채널 최근 원본 메시지 조회 후 시간순 배열을 요약 연�
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 10));
 });
 
-test("채널 요청 기본 개수는 50, 실제 route의 기본 요약 연결은 미연결", async () => {
+test("채널 요청 기본 개수는 50, 독립 handler 기본값은 외부 호출 없는 미연결", async () => {
   const { createClient, calls } = mockClient();
   await expectError(await handleSummarize(request({ channelId }), createClient), 503, "AI_NOT_CONNECTED");
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 50));
@@ -163,4 +165,27 @@ test("취소된 요청은 연결이나 DB 조회 전에 중단", async () => {
   let called = false;
   await expectError(await handleSummarize(request({ channelId }, { signal: controller.signal }), async () => { called = true; }), 408, "REQUEST_ABORTED");
   assert.equal(called, false);
+});
+
+test("EXAONE 연결을 주입해도 미로그인·비회원·빈 대화·DB 오류에는 외부 요청하지 않음", async () => {
+  let calls = 0;
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => {
+    calls += 1;
+    throw new Error("must not fetch");
+  } });
+  for (const [options, status, code] of [
+    [{ user: null }, 401, "UNAUTHORIZED"],
+    [{ membership: null }, 403, "FORBIDDEN"],
+    [{ rows: [] }, 422, "NO_MESSAGES"],
+    [{ dbError: {} }, 500, "DATABASE_ERROR"],
+  ]) {
+    await expectError(await handleSummarize(request({ channelId }), mockClient(options).createClient, generate), status, code);
+  }
+  assert.equal(calls, 0);
+});
+
+test("EXAONE 오류는 handler에서도 정제한 JSON·no-store로 전달", async () => {
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => new Response("private provider detail", { status: 401 }) });
+  const body = await expectError(await handleSummarize(request({ messages: ["합성 문장"] }), mockClient().createClient, generate), 502, "AI_AUTH_FAILED");
+  assert.doesNotMatch(JSON.stringify(body), /unit-test-only|private provider detail/);
 });
