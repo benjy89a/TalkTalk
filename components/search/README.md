@@ -60,4 +60,24 @@ npm run build
 - [ ] 한글 조합 중 Enter가 조기 검색을 일으키지 않는지 확인
 - [ ] 긴 본문·키보드 조작·조회 실패 안내를 실제 화면에서 확인
 
-AI 요약·할 일 결과 UI는 아직 구현하지 않았으며, AI 서버 코드는 `app/api/ai/` 담당입니다.
+## E-3 요약 UI 준비 — 실제 AI 미연결
+
+- `AiToolsBar.tsx`: `channelId: string | null`을 받는 요약 버튼·범위 선택(최근 10/25/50개)·로딩·취소·안내·결과 표시 컴포넌트입니다.
+- `summaryClient.ts`: 로그인 쿠키와 함께 내부 `/api/ai/summarize`에 `{ channelId, limit }`을 전달합니다. 대화 원문·외부 AI 키를 브라우저에서 전달하지 않습니다.
+- `summaryClient.test.mjs`: 테스트용 HTTP 응답으로 클라이언트 요청·오류·취소를 검사합니다.
+
+```tsx
+import AiToolsBar from "@/components/search/AiToolsBar";
+
+<AiToolsBar channelId={channelId} />
+```
+
+현재는 AI 미연결 안내를 제공하고 실제 요약은 생성하지 않습니다. 결과 표시 코드는 향후 연결을 위한 준비이며, 테스트용 결과를 실제 AI 생성 결과처럼 표시하지 않습니다. 채널 변경 시 이전 결과를 초기화하고 요청을 취소합니다.
+
+팀 연결 규격에 따라 **팀장이 `components/layout/slots.tsx`의 `AiToolsSlot`에서 연결**해야 화면에 나타납니다. 해당 레이아웃 파일은 변경하지 않았습니다. API 동작·검사·제한은 [AI API 안내](../../app/api/ai/README.md)를 참고하세요.
+
+- [ ] 실제 브라우저에서 채널 변경·취소·미연결·권한 오류 안내 확인
+- [ ] 두 계정으로 채널 접근 권한 확인
+- [ ] 제공업체 협의 후 실제 AI 요약 연결·내용 품질·속도 검증
+
+할 일 추출(E-4)은 아직 구현하지 않았습니다.
