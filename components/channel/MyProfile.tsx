@@ -1,13 +1,31 @@
 "use client";
 
-// [C] 사이드바 맨 아래: 내 이름 + 로그아웃 버튼
+// [C] 사이드바 맨 아래: 내 이름 + ⚙️ 내 정보 변경 + 로그아웃 버튼
 // 사용 예: <MyProfile />  (Sidebar 의 "내 프로필 · 로그아웃" Placeholder 자리)
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import AccountSettings, { AccountDialog } from "./AccountSettings";
 import LogoutButton from "./LogoutButton";
+import PasswordReminder from "./PasswordReminder";
+
+// 로그인 화면 "이메일 기억하기"가 쓰는 저장 이름 (LoginForm 과 같은 값)
+const REMEMBER_EMAIL_KEY = "talktalk:remembered-email";
+
+// 이메일을 바꾼 뒤(확인 메일 링크까지 누른 뒤) 기억해 둔 옛 이메일을 새 이메일로 맞춘다
+function syncRememberedEmail(email: string | undefined) {
+  if (!email) return;
+  try {
+    const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
+    if (saved && saved !== email) localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+  } catch {
+    // 저장소를 못 쓰면 그냥 넘어간다
+  }
+}
 
 export default function MyProfile() {
   const [name, setName] = useState<string | null>(null);
+  // 60일 안내에서 "지금 바꾸기"를 누르면 비밀번호 칸을 펼친 내 정보 창을 연다
+  const [pwDialogOpen, setPwDialogOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,6 +37,7 @@ export default function MyProfile() {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) return;
+        syncRememberedEmail(user.email);
         const { data } = await supabase
           .from("profiles")
           .select("name")
@@ -44,7 +63,18 @@ export default function MyProfile() {
         </span>
         <span className="truncate text-sm">{name ?? "불러오는 중…"}</span>
       </div>
-      <LogoutButton />
+      <div className="flex shrink-0 items-center gap-1">
+        <AccountSettings onNameChanged={setName} />
+        <LogoutButton />
+      </div>
+      <PasswordReminder onChangeNow={() => setPwDialogOpen(true)} />
+      {pwDialogOpen && (
+        <AccountDialog
+          initialSection="password"
+          onNameChanged={setName}
+          onClose={() => setPwDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

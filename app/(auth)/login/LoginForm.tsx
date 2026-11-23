@@ -255,6 +255,12 @@ export default function LoginForm() {
           </a>
         </p>
       )}
+      {!isSignup && (
+        // 아이디(이메일)는 화면에서 찾아 주지 않는다 (남의 가입 여부가 드러나므로) → 관리자에게 문의
+        <p className="mt-1 text-center text-xs text-gray-400">
+          이메일(아이디)이 기억나지 않으면 팀장(관리자)에게 문의해 주세요.
+        </p>
+      )}
     </div>
   );
 }
