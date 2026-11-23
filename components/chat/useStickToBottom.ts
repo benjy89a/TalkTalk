@@ -3,7 +3,8 @@
 //  - 처음 불러왔을 때 / 내가 보낸 메시지 / 맨 아래를 보고 있었을 때 → 맨 아래로
 //  - 위쪽 예전 메시지를 읽는 중 → 그대로 두고 "새 메시지 n개" 개수를 알려줌
 //  - (B-6) 맨 위 근처에 오면 onReachTop 호출, 위에 메시지가 붙어도 보던 위치가 튀지 않게 맞춤
-import { useLayoutEffect, useRef, useState } from "react";
+//  - 맨 아래를 보고 있을 때 내용이 길어지면(예: "답글 n개" 가 늦게 붙음) 맨 아래로 따라감
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DisplayMessage } from "./outbox";
 
 // 맨 아래에서 이 정도(px) 안쪽이면 "맨 아래를 보고 있다"고 본다
@@ -18,6 +19,7 @@ export function useStickToBottom(
   onReachTop?: () => Promise<unknown>,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null); // 스크롤 영역 안의 내용 (높이 변화 감지용)
   const atBottomRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   // 사용자가 마지막으로 본(맨 아래였을 때의) 메시지 → 그 뒤에 온 것이 "새 메시지"
@@ -27,6 +29,7 @@ export function useStickToBottom(
   const last = messages.at(-1);
   const lastKey = last?.client_id;
   const firstKey = messages[0]?.client_id;
+  const hasContent = messages.length > 0; // 빈 채널에 첫 메시지가 생기면 감지를 다시 건다
   // 이전 메시지를 부르기 직전의 스크롤 높이·위치 (위에 붙은 뒤 위치를 맞추는 데 씀)
   const anchorRef = useRef<{ height: number; top: number } | null>(null);
 
@@ -52,6 +55,19 @@ export function useStickToBottom(
       el.scrollTop = el.scrollHeight; // → onScroll 이 불려서 seenKey 갱신
     }
   }, [ready, scope, lastKey, last?.status]);
+
+  // 맨 아래를 보고 있었는데 내용 높이가 늘어나면 맨 아래로 따라간다
+  // (메시지를 그린 뒤 답글 수 링크가 늦게 붙어 마지막 메시지가 잘리던 문제)
+  useEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!ready || !el || !content) return;
+    const ro = new ResizeObserver(() => {
+      if (atBottomRef.current && !anchorRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [ready, scope, hasContent]);
 
   function onScroll() {
     const el = scrollRef.current;
@@ -79,5 +95,5 @@ export function useStickToBottom(
   const seenIndex = seenKey ? messages.findIndex((m) => m.client_id === seenKey) : -1;
   const unseen = atBottom || seenIndex < 0 ? 0 : messages.length - 1 - seenIndex;
 
-  return { scrollRef, onScroll, scrollToBottom, unseen };
+  return { scrollRef, contentRef, onScroll, scrollToBottom, unseen };
 }

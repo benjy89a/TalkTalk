@@ -31,7 +31,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     () => mergeWithOutbox(loaded, outbox, channelId, rootId),
     [loaded, outbox, channelId, rootId],
   );
-  const { scrollRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
+  const { scrollRef, contentRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
     replies,
     status === "ready",
     String(rootId),
@@ -65,20 +65,22 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
       {status === "ready" && root && (
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
-            {/* 원본 메시지 */}
-            <MessageItem message={root} mine={root.user_id === myId} first last />
+            <div ref={contentRef}>
+              {/* 원본 메시지 */}
+              <MessageItem message={root} mine={root.user_id === myId} first last />
 
-            {/* 구분선 */}
-            <div className="my-3 flex items-center gap-3" role="separator">
-              <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-xs leading-5 font-medium text-gray-600">
-                {replies.length > 0 ? `답글 ${replies.length}개` : "아직 답글이 없어요"}
-              </span>
-              <div className="h-px flex-1 bg-gray-200" />
+              {/* 구분선 */}
+              <div className="my-3 flex items-center gap-3" role="separator">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-xs leading-5 font-medium text-gray-600">
+                  {replies.length > 0 ? `답글 ${replies.length}개` : "아직 답글이 없어요"}
+                </span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+
+              {/* 답글 목록 */}
+              <MessageRows messages={replies} myId={myId} />
             </div>
-
-            {/* 답글 목록 */}
-            <MessageRows messages={replies} myId={myId} />
           </div>
           <NewMessagesButton count={unseen} onClick={scrollToBottom} />
         </div>

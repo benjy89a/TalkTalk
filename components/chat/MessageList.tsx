@@ -44,7 +44,7 @@ export default function MessageList({ channelId }: Props) {
 
   // (B-6) 맨 위 근처에 오면 이전 50개 불러오기
   const canLoadOlder = status === "ready" && hasMore && !loadingOlder;
-  const { scrollRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
+  const { scrollRef, contentRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
     messages,
     status === "ready",
     channelId,
@@ -78,17 +78,19 @@ export default function MessageList({ channelId }: Props) {
         <CenterText>아직 메시지가 없어요. 첫 메시지를 보내보세요!</CenterText>
       ) : (
         <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
-          {/* (B-6) 맨 위: 불러오는 중 / 더 없으면 채널 시작 안내 */}
-          <div className="py-2 text-center text-xs leading-5 text-gray-500">
-            {loadingOlder ? "이전 메시지를 불러오는 중…" : hasMore ? " " : "이 채널의 첫 메시지예요 👋"}
+          <div ref={contentRef}>
+            {/* (B-6) 맨 위: 불러오는 중 / 더 없으면 채널 시작 안내 */}
+            <div className="py-2 text-center text-xs leading-5 text-gray-500">
+              {loadingOlder ? "이전 메시지를 불러오는 중…" : hasMore ? " " : "이 채널의 첫 메시지예요 👋"}
+            </div>
+            <MessageRows
+              messages={messages}
+              myId={myId}
+              replyStats={replyStats}
+              onOpenThread={(rootId) => openThread(channelId, rootId)}
+              activeRootId={openedThread?.channelId === channelId ? openedThread.rootId : null}
+            />
           </div>
-          <MessageRows
-            messages={messages}
-            myId={myId}
-            replyStats={replyStats}
-            onOpenThread={(rootId) => openThread(channelId, rootId)}
-            activeRootId={openedThread?.channelId === channelId ? openedThread.rootId : null}
-          />
         </div>
       )}
 
