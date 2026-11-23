@@ -1,0 +1,43 @@
+"use client";
+// [B] 채널 본문 · 스레드가 같이 쓰는 작은 화면 조각들
+
+export function CenterText({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center p-4 text-center text-sm leading-6 text-gray-600">
+      {children}
+    </div>
+  );
+}
+
+export function RetryButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-3 inline-flex min-h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:ring-offset-2 focus-visible:outline-none"
+    >
+      다시 시도
+    </button>
+  );
+}
+
+export function LostBanner() {
+  return (
+    <div role="status" className="shrink-0 bg-amber-50 px-4 py-1.5 text-center text-xs leading-5 text-amber-800">
+      연결이 끊겼어요. 다시 연결하는 중…
+    </div>
+  );
+}
+
+export function NewMessagesButton({ count, onClick }: { count: number; onClick: () => void }) {
+  if (count <= 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute bottom-4 left-1/2 inline-flex min-h-9 -translate-x-1/2 items-center gap-1 rounded-full bg-[#1e325c] px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-[#172746] focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:ring-offset-2 focus-visible:outline-none"
+    >
+      새 메시지 {count}개 ↓
+    </button>
+  );
+}
