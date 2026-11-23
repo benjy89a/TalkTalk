@@ -1,6 +1,7 @@
 // 오른쪽 스레드 패널: 선택한 메시지(root)와 답글 목록
 // 좁은 화면(lg 미만)에서는 숨긴다. 열기/닫기는 B 가 스레드 기능을 만들 때 팀장과 협의해 붙인다.
-import Placeholder from "./Placeholder";
+// 칸 안의 내용은 slots.tsx 에서 끼운다.
+import { ThreadBodySlot } from "./slots";
 
 export default function ThreadPanel() {
   return (
@@ -9,9 +10,7 @@ export default function ThreadPanel() {
         스레드
       </header>
       <div className="flex-1 space-y-2 overflow-y-auto p-4">
-        <Placeholder owner="B">
-          원본 메시지 + 답글 목록 + 답글 입력창 (components/chat, parent_id 사용)
-        </Placeholder>
+        <ThreadBodySlot />
       </div>
     </aside>
   );
