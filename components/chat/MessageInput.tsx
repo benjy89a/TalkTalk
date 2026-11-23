@@ -2,19 +2,27 @@
 // [B] 메시지 입력창 (B-2)
 // 사용 예: <MessageInput channelId={채널id} />            ← 채널 본문
 //          <MessageInput channelId={채널id} parentId={원본id} /> ← 스레드 답글
+//          <MessageInput channelId={채널id} extras={<AttachButton channelId={채널id} />} />
+// extras: 입력창 아래에 놓일 칸 — 첨부 버튼 · @멘션 (D, CONTRACTS.md)
 // Enter: 전송 / Shift+Enter: 줄바꿈 / 최대 6줄까지 늘어나고 그 이상은 입력창 안에서 스크롤
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { MAX_LENGTH, sendMessage } from "./outbox";
 
 type Props = {
   channelId: string;
   parentId?: number | null;
   placeholder?: string;
+  extras?: ReactNode;
 };
 
 const MAX_HEIGHT = 6 * 24 + 16; // 6줄(줄 높이 24px) + 위아래 여백
 
-export default function MessageInput({ channelId, parentId = null, placeholder = "메시지 보내기" }: Props) {
+export default function MessageInput({
+  channelId,
+  parentId = null,
+  placeholder = "메시지 보내기",
+  extras,
+}: Props) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -78,6 +86,8 @@ export default function MessageInput({ channelId, parentId = null, placeholder =
           {tooLong ? `${-remaining}자 초과 (최대 ${MAX_LENGTH}자)` : `${remaining}자 남음`}
         </p>
       )}
+      {/* 입력창 아래 칸: 첨부 버튼 · @멘션 (D) */}
+      {extras && <div className="mt-2 flex items-center gap-2">{extras}</div>}
     </div>
   );
 }

@@ -10,7 +10,9 @@
 | B-4 델타 동기화 | `feature/gyeseop-delta-sync` (B-3 위에서 이어서) | ✅ main 머지됨 (PR #9) |
 | 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | ✅ main 머지됨 (PR #9) |
 | B-5 스레드(답글) | `feature/gyeseop-thread` (B-4 위에서 이어서) | ✅ main 머지됨 (PR #13) |
-| B-6 무한스크롤 (+ 맨 아래 잘림 수정) | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | PR 올림 · 머지 대기 |
+| B-6 무한스크롤 (+ 맨 아래 잘림 수정) | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | ✅ main 머지됨 (PR #18) |
+| 첨부 칸 열기 (CONTRACTS.md · D 요청) | `feature/gyeseop-attach-slots` | 완료 · 로컬 확인 (PR 올릴 차례) |
+| 스레드 바깥 클릭 · Esc 로 닫기 | `feature/gyeseop-thread-close` (첨부 칸 위에서 이어서) | 완료 · 로컬 확인 |
 
 > ⚠️ 브랜치가 B-1 → … → B-5 → B-6 순서로 이어져 있어요. PR 도 **B-4 → B-5 → B-6 순서로, 앞의 것이 머지된 뒤** 올립니다.
 
@@ -95,6 +97,29 @@
   → 해결: 맨 아래를 보고 있을 때 내용 높이가 늘면 자동으로 맨 아래로 따라가게 함 (`useStickToBottom`, ResizeObserver). → 0px ✅ / 무한스크롤 위치 유지도 그대로(108px → 108px) ✅
 - 🐞 (미리보기 전용) 로그아웃 버튼이 두 개 → 서보님 `MyProfile` 안에 이미 로그아웃이 있는데 미리보기에서 하나 더 붙인 내 실수. 미리보기만 수정. **팀장님 연결 시 `LogoutButton` 대신 `MyProfile` 하나만** 넣으면 됨.
 
+### 9. 첨부 칸 열기 (팀장님 CONTRACTS.md · 문수정님 요청)
+- 팀장님이 만든 연결 규격 문서(`DevelopDoc/CONTRACTS.md`)에 "B 가 열어 줄 칸"으로 적힌 것을 **규격 그대로** 만듦 → 문수정님이 첨부 기능을 붙일 때 내 파일을 고칠 필요가 없음.
+  - `MessageList` / `MessageItem`: `renderAttachments?(message)` — 말풍선 **바로 아래**에 첨부를 그릴 칸
+  - `MessageInput`: `extras?: ReactNode` — 입력창 **아래**에 첨부 버튼·@멘션을 놓을 칸
+  - `MessageList`: `onOpenThread?(message)` — 같은 표에 B 스레드용으로 적혀 있어 함께 열어 둠 (스레드 패널은 이것 없이도 열림)
+- **보내는 중·실패 메시지에는 첨부 칸을 그리지 않음** — 아직 DB id 가 없어서(임시 id -1) 첨부를 연결할 수 없기 때문.
+- 검증(테스트 페이지에 가짜 첨부 표시를 끼워서): 저장 전엔 칸 없음 → 저장되면 말풍선 아래 칸 표시 ✅ / 입력창 아래 칸 표시 ✅ / 칸이 생겨도 맨 아래까지 정확히 내려감(0px) ✅
+
+### 10. 테스트 데이터 정리
+- 지우기 전에 개수부터 확인(읽기만): #general 우리 테스트 메시지 37개, `gyeseop-test` 채널 메시지 121개, 다른 팀원 메시지 2개(안 지움).
+- 안전장치: 다른 팀원이 답글을 단 우리 원본은 남기도록 확인 → 해당 없음.
+- 각 테스트 계정으로 **자기 메시지만** 삭제(RLS: 본인 메시지만 삭제 가능) → 37개 삭제, 남은 우리 메시지 0 ✅
+- `gyeseop-test` 는 채널 관리자(계섭테스트1)로 삭제 → 멤버·메시지 함께 삭제 ✅
+- 내 컴퓨터 테스트 페이지 `/dev-chat` 과 커밋 제외 설정도 삭제. 이후 테스트는 진짜 로그인 화면(`/login`)으로.
+- 계정 삭제는 Supabase 관리 화면에서만 가능하고 Auth 는 팀장 담당이라 남겨 둠.
+
+### 11. 스레드 바깥 클릭하면 닫기 (계섭님 요청)
+- 요청: "답글을 누르면 스레드가 생기고, 다른 곳을 누르면 사라지게".
+- 나눠 보니 ① **닫히는 동작**은 내 `ThreadView` 에서 처리 가능, ② **패널 틀이 생기고 사라지는 것**은 팀장님 `ThreadPanel.tsx`(항상 자리를 차지) → ①만 하고 ②는 협의 요청.
+- 구현: 스레드 패널 **바깥**을 누르면 닫힘, **패널 안**(답글 입력 등)은 그대로, **다른 메시지의 "답글"**(`data-thread-trigger`)은 닫지 않고 그 스레드로 바뀜, 덤으로 **Esc** 로 닫기.
+- 🔎 테스트 중 테스트c 계정에서 #general 메시지가 안 보임 → 원인: 그 계정이 #general 에서 "나가기" 한 상태(멤버가 아니라 안 보이는 게 정상). 계섭테스트1로 확인.
+- 검증(테스트 메시지 2개를 잠깐 보냈다가 바로 삭제): 답글 클릭 → 열림 ✅ / 패널 안 클릭 → 유지 ✅ / 다른 답글 → 그 스레드로 바뀜 ✅ / 메시지 영역·사이드바·아래 입력창 클릭 → 닫힘 ✅ / Esc → 닫힘 ✅
+
 ### 팀 규정 점검
 - CLAUDE.md · PR 템플릿 · TECH_SPEC · FINAL_CHECKLIST 와 대조 → 위반 없음. `MessageItem.tsx` 에 빠져 있던 `"use client"` 만 규칙대로 추가.
 - 모든 변경은 `components/chat/` 안. 패키지 추가 없음. 비밀값 0건.
@@ -109,8 +134,8 @@
 | `format.ts` | "오후 3:42" 같은 시간 표시, 날짜 구분선 글자("11월 23일 월요일"), 5분 안에 같은 사람이 보낸 메시지 묶기 규칙 |
 | `useChannelMessages.ts` | **(B-6)** 이전 메시지 50개 더 불러오기(`loadOlder`), 더 있는지(`hasMore`). **(B-5)** 원본 메시지별 답글 수·마지막 답글 시간도 셈. 채널의 최근 메시지 50개를 불러옴(답글은 빼고 본문만). 새 메시지를 실시간으로 받고, 채널이 바뀌면 이전 구독을 끊음. 실시간 메시지의 보낸 사람 이름은 따로 한 번 불러와 기억. **(B-4)** 채널별 마지막 수신 id 를 기억했다가 다시 연결되면(실시간 재연결 · 탭 복귀 · 와이파이 복구) 그 id 이후 메시지만 500개씩 끝까지 받아옴 |
 | `outbox.ts` | "보내는 중인 메시지" 공유 보관함. 입력창과 목록이 화면의 서로 다른 칸에 있어도 같은 데이터를 봄. 보내는 즉시 화면에 표시 → 저장되면 확정, 실패하면 재전송(같은 `client_id`). **(B-4)** 다시 연결되면 실패한 메시지 자동 재전송 |
-| `MessageInput.tsx` | 메시지 입력창. Enter 전송 · Shift+Enter 줄바꿈 · 최대 6줄까지 늘어남 · 4000자 제한 · 한글 조합 중 Enter 무시 |
-| `MessageItem.tsx` | **(B-5)** 답글이 있으면 말풍선 아래 "답글 n개 · 시간", 없으면 마우스를 올릴 때 "답글" 버튼. 열린 스레드의 원본은 파란 배경. 메시지 말풍선 한 개. 내 메시지는 오른쪽 남색, 상대방은 왼쪽 회색(묶음 첫 줄에 아바타·이름). 시간은 묶음 마지막 말풍선 옆. 보내는 중은 흐리게, 실패하면 "재전송 · 삭제" |
+| `MessageInput.tsx` | **(첨부 칸)** 입력창 아래 `extras` 칸. 메시지 입력창. Enter 전송 · Shift+Enter 줄바꿈 · 최대 6줄까지 늘어남 · 4000자 제한 · 한글 조합 중 Enter 무시 |
+| `MessageItem.tsx` | **(첨부 칸)** 말풍선 아래 `renderAttachments` 칸(저장된 메시지만). **(B-5)** 답글이 있으면 말풍선 아래 "답글 n개 · 시간", 없으면 마우스를 올릴 때 "답글" 버튼. 열린 스레드의 원본은 파란 배경. 메시지 말풍선 한 개. 내 메시지는 오른쪽 남색, 상대방은 왼쪽 회색(묶음 첫 줄에 아바타·이름). 시간은 묶음 마지막 말풍선 옆. 보내는 중은 흐리게, 실패하면 "재전송 · 삭제" |
 | `MessageList.tsx` | **(읽음)** D 의 `useMarkAsRead` 로 DB 에 저장된 마지막 메시지 id 까지 읽음 처리(보내는 중 메시지 제외). 메시지 목록 + 날짜 구분선 + 불러오는 중 / 메시지 없음 / 실패 시 "다시 시도". 맨 아래를 보고 있을 때만 자동 스크롤, 위를 읽는 중이면 "새 메시지 n개 ↓" 버튼, 연결 끊김 띠 |
 | `ThreadView.tsx` | **(B-5)** 스레드 패널 내용. 원본 메시지 + 답글 목록(카톡식) + 답글 입력창 + 닫기(✕). 열린 스레드가 없으면 안내 문구 |
 | `threads.ts` | **(B-5)** 지금 열린 스레드 공유 저장소 ("답글" 버튼 ↔ 스레드 패널 연결) |
@@ -133,6 +158,10 @@ import ThreadView from "@/components/chat/ThreadView";
 // components/layout/MessageArea.tsx 의 B 자리(Placeholder)에
 <MessageList channelId={선택된채널id} />   // 메시지 목록 칸
 <MessageInput channelId={선택된채널id} />  // 입력창 칸
+
+// 첨부 (D) — CONTRACTS.md 규격
+<MessageList channelId={id} renderAttachments={(m) => <AttachmentList messageId={m.id} />} />
+<MessageInput channelId={id} extras={<AttachButton channelId={id} />} />
 
 // components/layout/ThreadPanel.tsx 의 B 자리(Placeholder)에 (B-5)
 <ThreadView />   // "답글"을 누르면 그 스레드가 열림. 원본·답글·답글 입력창이 다 들어 있음
@@ -172,17 +201,15 @@ import ThreadView from "@/components/chat/ThreadView";
 
 ## 팀장님께 협의할 것
 
-1. **화면 연결**: ✅ 메시지 목록·입력창은 팀장님이 연결해 주심 (PR #7). 남은 것: B-5 머지 후 `ThreadPanel.tsx` 의 B 칸에 `<ThreadView />`. (스레드 패널을 스레드가 열렸을 때만 보이게 하려면 `useOpenThread()` 로 열림 여부를 알 수 있어요)
+1. **화면 연결**: ✅ 메시지 목록·입력창·스레드 패널 모두 팀장님이 연결해 주심 (PR #7, #20). 남은 것: 스레드가 열렸을 때만 패널이 보이도록 `ThreadPanel.tsx` 에서 `useOpenThread()` 사용 (닫히면 패널 자체가 사라지게). (스레드 패널을 스레드가 열렸을 때만 보이게 하려면 `useOpenThread()` 로 열림 여부를 알 수 있어요)
 2. **메시지 모양**: 카톡처럼 내 메시지는 오른쪽 말풍선으로 바꿨어요. 3단 레이아웃은 그대로인데, Mattermost 방식(모두 왼쪽 정렬)과는 달라요. 팀 방향과 괜찮은지 봐주세요. (재문님 디자인 가이드와도 맞춰볼게요)
 3. **사이드바 연결 시 참고**: 서보님 `MyProfile` 에 로그아웃 버튼이 들어 있어서, `LogoutButton` 을 따로 넣으면 버튼이 두 개가 돼요. `MyProfile` 하나만 넣어주세요.
-4. **테스트 데이터**: 팀 Supabase 에 테스트 계정 2개(`gyeseop.test1/2@example.com`), #general 테스트 메시지, 비공개 테스트 채널 `gyeseop-test`(메시지 121개)가 있어요. 시연 전에 정리할지 정해주세요.
+4. **테스트 데이터**: ✅ 11/23 정리 완료 — #general 테스트 메시지 37개, 비공개 테스트 채널 `gyeseop-test`(메시지 121개) 삭제. **남은 것: 테스트 계정 3개**(`gyeseop.test1/2@example.com`, 계섭님이 만든 새 계정) — 시연용으로 쓸지, 지울지(Supabase 관리 화면, 팀장님) 정해주세요.
 
 ---
 
 ## 다음 할 일
 
-- [ ] (CONTRACTS.md · D 요청) `MessageList`/`MessageItem` 에 첨부 표시 칸 `renderAttachments?(message)` 열기
-- [ ] (CONTRACTS.md · D 요청) `MessageInput` 에 입력창 아래 칸 `extras?: ReactNode` 열기
 - [ ] (CONTRACTS.md · E 요청 시) 검색 결과로 이동 `focusMessageId?: number`
 - [ ] 스레드 패널 연결 확인 — 팀장님이 `ThreadPanel` 에 `<ThreadView />` 연결하면 화면에서 확인
 - [ ] 대량 메시지 시연용 시드 스크립트 — 위치·담당 팀장님과 협의 필요
