@@ -96,3 +96,7 @@ export function AiToolsSlot() {
   return <AiToolsBar channelId={channelId} />;
 }
 ```
+
+## E-4 자연어 검색·할 일 추출
+
+`/api/ai/search`, `/api/ai/tasks`의 EXAONE 연결·입력/권한/결과 검증과 UI를 추가했습니다. **실제 합성 질문 해석은 성공했으나 할 일 추출은 25초·45초 모두 시간 초과로 실제 성공/품질 미검증**입니다. `AiToolsBar(channelId)` 안에 E-4 UI를 포함했지만 공용 슬롯·배포 설정·인증된 앱 검증은 별도입니다. API 규격·상대 날짜 정책·제한·검사·남은 협의는 [E4.md](E4.md)를 참고하세요.

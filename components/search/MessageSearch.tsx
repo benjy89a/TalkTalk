@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { consumeSearchEscape } from "./searchKeyboard";
 import {
   MessageSearchError,
   SEARCH_KEYWORD_MAX_LENGTH,
@@ -105,7 +106,7 @@ export default function MessageSearch({ onSelect }: MessageSearchProps) {
       ref={containerRef}
       className="relative w-full min-w-0 text-gray-900"
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (consumeSearchEscape(event, state.status !== "idle")) {
           closeResults();
           inputRef.current?.focus();
         }
