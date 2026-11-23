@@ -12,13 +12,14 @@ import DmList from "@/components/channel/DmList";
 import MyProfile from "@/components/channel/MyProfile";
 import StartDmButton from "@/components/channel/StartDmButton";
 import ThreadView from "@/components/chat/ThreadView";
+import UnreadBadge from "@/components/notifications/UnreadBadge";
 import MessageSearch from "@/components/search/MessageSearch";
 import { useSelectedChannel } from "./ChannelContext";
 import Placeholder from "./Placeholder";
 
 // ───────── 사이드바 ─────────
 
-/** [C][D] 채널 목록 + 미읽음 굵게 (연결 완료) */
+/** [C][D] 채널 목록 + 미읽음 굵게 + 멘션 배지 (연결 완료) */
 export function SidebarChannelListSlot() {
   const { channelId, selectChannel, channelListKey, isUnread } = useSelectedChannel();
   return (
@@ -27,6 +28,7 @@ export function SidebarChannelListSlot() {
       onSelect={selectChannel}
       refreshKey={channelListKey}
       isUnread={isUnread}
+      renderBadge={(id) => <UnreadBadge channelId={id} activeChannelId={channelId} />}
     />
   );
 }
@@ -35,15 +37,6 @@ export function SidebarChannelListSlot() {
 export function SidebarChannelActionsSlot() {
   const { selectChannel, refreshChannelList } = useSelectedChannel();
   return <ChannelActions onChanged={refreshChannelList} onSelect={selectChannel} />;
-}
-
-/** [D] 멘션 배지 — 미읽음 굵게는 채널·DM 목록에 연결됨. 배지 컴포넌트는 아직 없다 */
-export function SidebarUnreadSlot() {
-  return (
-    <Placeholder owner="D" dark>
-      멘션 배지 (components/notifications)
-    </Placeholder>
-  );
 }
 
 /** [C][D] DM 목록 + 새 DM 시작 (연결 완료) */
@@ -56,6 +49,7 @@ export function SidebarDmListSlot() {
         onSelect={selectChannel}
         refreshKey={dmListKey}
         isUnread={isUnread}
+        renderBadge={(id) => <UnreadBadge channelId={id} activeChannelId={channelId} />}
       />
       <StartDmButton onChanged={refreshDmList} onSelect={selectChannel} />
     </div>
