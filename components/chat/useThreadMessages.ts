@@ -13,13 +13,11 @@ import {
   type LoadStatus,
 } from "./chatData";
 import {
-  DELETED_EVENT,
-  EDITED_EVENT,
-  type DeletedDetail,
-  type EditedDetail,
+  UPDATED_EVENT,
+  type UpdatedDetail,
 } from "./messageActions";
 import { retryAllFailed } from "./outbox";
-import { MAX_RENDERED, MESSAGE_SELECT, type ChatMessage } from "./types";
+import { MAX_RENDERED, MESSAGE_SELECT, type ChatMessage, type MessagePatch } from "./types";
 
 // 스레드 답글은 채널 본문과 같은 기준으로 최대 500개(MAX_RENDERED)까지 보여준다.
 // 답글이 그보다 많으면 "최신" 500개를 보여주고, 생략된 개수는 omitted 로 알려 준다.
@@ -127,12 +125,14 @@ export function useThreadMessages(rootId: number) {
 
   // ---- 수정 · 삭제 반영 ----
   const applyEdit = useCallback(
-    (id: number, content: string) => {
-      if (id === rootId) setRoot((r) => (r ? { ...r, content } : r));
-      else setReplies((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content } : m)) : prev));
+    // 수정·소프트 삭제: 바뀐 칸만 덮어쓴다 (원본이 삭제돼도 스레드는 열어 두고 "삭제된 메시지입니다"로 보여 줌)
+    (id: number, patch: MessagePatch) => {
+      if (id === rootId) setRoot((r) => (r ? { ...r, ...patch } : r));
+      else setReplies((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, ...patch } : m)) : prev));
     },
     [rootId],
   );
+  // 실제 삭제(DELETE) — 첨부 업로드 실패 되돌리기 등. 원본이 실제로 지워지면 스레드를 닫는다
   const applyDelete = useCallback(
     (id: number) => {
       if (id === rootId) setRootDeleted(true);
@@ -142,17 +142,13 @@ export function useThreadMessages(rootId: number) {
   );
   useEffect(() => {
     const onEdited = (e: Event) => {
-      const { id, content } = (e as CustomEvent<EditedDetail>).detail;
-      applyEdit(id, content);
+      // 이 화면에서 수정·삭제(소프트 삭제)한 것 → 바뀐 칸만 반영
+      const { id, patch } = (e as CustomEvent<UpdatedDetail>).detail;
+      applyEdit(id, patch);
     };
-    const onDeleted = (e: Event) => applyDelete((e as CustomEvent<DeletedDetail>).detail.id);
-    window.addEventListener(EDITED_EVENT, onEdited);
-    window.addEventListener(DELETED_EVENT, onDeleted);
-    return () => {
-      window.removeEventListener(EDITED_EVENT, onEdited);
-      window.removeEventListener(DELETED_EVENT, onDeleted);
-    };
-  }, [applyEdit, applyDelete]);
+    window.addEventListener(UPDATED_EVENT, onEdited);
+    return () => window.removeEventListener(UPDATED_EVENT, onEdited);
+  }, [applyEdit]);
 
   // ---- 실시간: 이 스레드의 새 답글 ----
   useEffect(() => {
@@ -177,8 +173,9 @@ export function useThreadMessages(rootId: number) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: `parent_id=eq.${rootId}` },
         (payload) => {
-          const row = payload.new as Message;
-          if (active) applyEdit(row.id, row.content);
+          // 수정도 삭제(소프트 삭제)도 UPDATE 로 온다
+          const row = payload.new as ChatMessage;
+          if (active) applyEdit(row.id, { content: row.content, edited_at: row.edited_at, deleted_at: row.deleted_at });
         },
       )
       // 원본 수정
@@ -186,8 +183,9 @@ export function useThreadMessages(rootId: number) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: `id=eq.${rootId}` },
         (payload) => {
-          const row = payload.new as Message;
-          if (active) applyEdit(row.id, row.content);
+          // 수정도 삭제(소프트 삭제)도 UPDATE 로 온다
+          const row = payload.new as ChatMessage;
+          if (active) applyEdit(row.id, { content: row.content, edited_at: row.edited_at, deleted_at: row.deleted_at });
         },
       )
       // 삭제 (알림에는 id 만 온다)

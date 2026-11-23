@@ -113,6 +113,10 @@ export type Database = {
           parent_id: number | null;
           content: string;
           created_at: string;
+          // 005: 내용이 바뀐 시각 (트리거가 자동 기록, null 이면 수정 안 됨)
+          edited_at: string | null;
+          // 005: 삭제된 시각 (null 이 아니면 "삭제된 메시지입니다", content 는 '')
+          deleted_at: string | null;
         };
         Insert: {
           // id 는 DB 가 자동으로 매기므로 넣지 않는다
@@ -122,6 +126,8 @@ export type Database = {
           parent_id?: number | null;
           content?: string;
           created_at?: string;
+          edited_at?: string | null;
+          deleted_at?: string | null;
         };
         Update: {
           client_id?: string;
@@ -130,6 +136,9 @@ export type Database = {
           parent_id?: number | null;
           content?: string;
           created_at?: string;
+          // edited_at·deleted_at 은 화면에서 직접 바꾸지 않는다 (트리거·soft_delete_message 가 처리)
+          edited_at?: string | null;
+          deleted_at?: string | null;
         };
         Relationships: [
           {
@@ -272,6 +281,8 @@ export type Database = {
           member_count: number;
         }[];
       };
+      // 005_message_edit_delete.sql (본인 또는 채널 관리자, DM 은 본인만)
+      soft_delete_message: { Args: { mid: number }; Returns: undefined };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

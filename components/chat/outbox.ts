@@ -12,7 +12,7 @@
 //       DB 의 client_id UNIQUE + upsert(ignoreDuplicates) 로 몇 번을 보내도 한 건만 저장된다.
 import { useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { MESSAGE_SELECT, type ChatMessage } from "./types";
+import { MESSAGE_SELECT, type ChatMessage, type MessagePatch } from "./types";
 
 export type OutboxStatus = "sending" | "failed";
 export type OutboxItem = ChatMessage & { status: OutboxStatus };
@@ -85,6 +85,8 @@ export async function sendMessage(input: {
     parent_id: input.parentId ?? null,
     content,
     created_at: new Date().toISOString(),
+    edited_at: null,
+    deleted_at: null,
     profiles: {
       name: (user.user_metadata?.name as string | undefined) || user.email?.split("@")[0] || "",
       avatar_url: null,
@@ -160,16 +162,10 @@ async function deliver(item: OutboxItem) {
   }
 }
 
-// 삭제된 메시지는 "이번 접속에서 보낸 기록"에서도 뺀다 (안 빼면 목록에 다시 붙는다)
-export function forgetSent(clientId: string) {
-  if (!state.sent.some((m) => m.client_id === clientId)) return;
-  setState({ ...state, sent: state.sent.filter((m) => m.client_id !== clientId) });
-}
-
-// 수정된 내용을 "이번 접속에서 보낸 기록"에도 반영
-export function updateSent(id: number, content: string) {
+// 수정·삭제된 내용을 "이번 접속에서 보낸 기록"에도 반영
+export function updateSent(id: number, patch: MessagePatch) {
   if (!state.sent.some((m) => m.id === id)) return;
-  setState({ ...state, sent: state.sent.map((m) => (m.id === id ? { ...m, content } : m)) });
+  setState({ ...state, sent: state.sent.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
 }
 
 // 서버에서 불러온 목록 + 내가 보낸(저장된) 메시지 + 보내는 중 메시지를 합친다

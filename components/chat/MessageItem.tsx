@@ -55,6 +55,11 @@ export default function MessageItem({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false); // 이모지 고르는 창
+  // 소프트 삭제된 메시지 (팀장님 005): 줄은 남고 내용은 비어 있음 → 카톡처럼 "삭제된 메시지입니다"
+  const deleted = !status && !!message.deleted_at;
+  const deletedBubble = (
+    <p className={`${BUBBLE} border border-gray-200 bg-white text-gray-400 italic`}>삭제된 메시지입니다</p>
+  );
 
   async function saveEdit() {
     const next = draft.trim();
@@ -68,16 +73,19 @@ export default function MessageItem({
   }
 
   async function onDelete() {
+    // 소프트 삭제(팀장님 005): 말풍선은 "삭제된 메시지입니다"로 남고 답글은 그대로. 되돌릴 수는 없다.
     const replies = thread?.count ?? 0;
-    const ask = replies > 0 ? `이 메시지를 삭제할까요?\n답글 ${replies}개도 함께 삭제돼요.` : "이 메시지를 삭제할까요?";
+    const ask =
+      "이 메시지를 삭제할까요?\n'삭제된 메시지입니다'로 바뀌고 되돌릴 수 없어요." +
+      (replies > 0 ? `\n답글 ${replies}개는 그대로 남아요.` : "");
     if (!window.confirm(ask)) return;
-    const ok = await deleteMessage(message.id, message.client_id);
+    const ok = await deleteMessage(message.id);
     if (!ok) alert("메시지를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
   }
 
   // 내 메시지(저장 완료)에만: 마우스를 올리면 보이는 "수정 · 삭제"
   const ownActions =
-    mine && !status && !editing ? (
+    mine && !status && !editing && !deleted ? (
       <span className="invisible flex shrink-0 gap-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible focus-within:visible">
         <button
           type="button"
@@ -96,6 +104,8 @@ export default function MessageItem({
     ) : null;
 
   // 말풍선 옆 작은 글씨: 실패면 재전송·삭제, 묶음의 마지막이면 시간
+  // 내용을 고친 적 있는 저장된 메시지 (팀장님 005: DB 가 수정 시각 자동 기록)
+  const edited = !status && !!message.edited_at && !deleted;
   const side =
     status === "failed" ? (
       <span className="flex shrink-0 flex-col items-end text-[11px] leading-4 text-red-600" role="alert">
@@ -109,16 +119,22 @@ export default function MessageItem({
           </button>
         </span>
       </span>
-    ) : last && status !== "sending" ? (
-      <time dateTime={message.created_at} className="shrink-0 text-[11px] leading-4 whitespace-nowrap text-gray-500">
-        {formatTime(message.created_at)}
-      </time>
+    ) : (last && status !== "sending") || edited ? (
+      // 수정된 메시지는 시간 위에 "수정됨" (같은 사람이 연달아 보내 시간이 숨은 줄에도 "수정됨"은 보인다)
+      <span className={`flex shrink-0 flex-col text-[11px] leading-4 whitespace-nowrap text-gray-500 ${mine ? "items-end" : "items-start"}`}>
+        {edited && (
+          <span title={`수정: ${formatTime(message.edited_at!)}`} aria-label="수정된 메시지">
+            수정됨
+          </span>
+        )}
+        {last && status !== "sending" && <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>}
+      </span>
     ) : null;
 
   const hasReplies = !!thread && thread.count > 0;
   // 답글이 없을 때: 마우스를 올리면 말풍선 옆에 나타나는 버튼 (가로 공간만 써서 줄 간격이 안 벌어짐)
   const replyButton =
-    onOpenThread && !hasReplies ? (
+    onOpenThread && !hasReplies && !deleted ? (
       <button
         type="button"
         onClick={onOpenThread}
@@ -141,7 +157,7 @@ export default function MessageItem({
       </button>
     ) : null;
   // 이모지 반응: 마우스를 올리면 보이는 😊+ 버튼과 고르는 창 (저장된 메시지에만)
-  const canReact = !!onReact && !status && !editing;
+  const canReact = !!onReact && !status && !editing && !deleted;
   const reactButton = canReact ? (
     <button
       type="button"
@@ -183,7 +199,7 @@ export default function MessageItem({
     ) : null;
   // 말풍선 아래 반응 칩: 누르면 달기/취소, 내가 누른 건 파랗게
   const reactionChips =
-    reactions && reactions.length > 0 ? (
+    !deleted && reactions && reactions.length > 0 ? (
       <span className={`mt-1 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
         {reactions.map((r) => (
           <button
@@ -208,7 +224,7 @@ export default function MessageItem({
 
   const rowBg = active ? "bg-blue-50" : "";
   // 첨부 칸 (D) — 저장된 메시지에만
-  const attachments = renderAttachments && !status ? renderAttachments(message) : null;
+  const attachments = renderAttachments && !status && !deleted ? renderAttachments(message) : null;
 
   if (mine) {
     return (
@@ -251,6 +267,8 @@ export default function MessageItem({
                 </button>
               </span>
             </div>
+          ) : deleted ? (
+            deletedBubble
           ) : (
             <p
               className={`${BUBBLE} bg-[#1e325c] text-white ${status ? "opacity-60" : ""}`}
@@ -287,7 +305,7 @@ export default function MessageItem({
           onMouseLeave={() => setPicking(false)}
         >
           {picker}
-          <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{formatText(message.content, false)}</p>
+          {deleted ? deletedBubble : <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{formatText(message.content, false)}</p>}
           {side}
           {reactButton}
           {replyButton}

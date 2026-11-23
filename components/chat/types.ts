@@ -6,6 +6,9 @@ export type ChatMessage = Message & {
   profiles: Pick<Profile, "name" | "avatar_url"> | null;
 };
 
+// 수정·삭제로 바뀌는 칸 (팀장님 005: edited_at 은 DB 가 자동 기록, 삭제는 soft_delete_message 가 content 를 비우고 deleted_at 기록)
+export type MessagePatch = Partial<Pick<ChatMessage, "content" | "edited_at" | "deleted_at">>;
+
 // messages 를 불러올 때 보낸 사람 프로필도 같이 가져오는 select 문
 // (messages.user_id → profiles.id 관계를 따라감)
 // ⚠️ "profiles!messages_user_id_fkey" 처럼 어느 연결인지 꼭 적는다.
