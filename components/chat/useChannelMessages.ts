@@ -18,10 +18,8 @@ import {
   type LoadStatus,
 } from "./chatData";
 import {
-  DELETED_EVENT,
-  EDITED_EVENT,
-  type DeletedDetail,
-  type EditedDetail,
+  UPDATED_EVENT,
+  type UpdatedDetail,
 } from "./messageActions";
 import { retryAllFailed } from "./outbox";
 import {
@@ -30,6 +28,7 @@ import {
   MESSAGE_SELECT,
   PAGE_SIZE,
   type ChatMessage,
+  type MessagePatch,
 } from "./types";
 
 export type { LiveStatus, LoadStatus } from "./chatData";
@@ -213,12 +212,12 @@ export function useChannelMessages(channelId: string) {
   const catchUpRef = useRef<() => void>(() => {});
 
   // ---- 수정 · 삭제 반영 (내가 한 것: 브라우저 신호 / 남이 한 것: Realtime) ----
-  const applyEdit = useCallback((id: number, content: string, editedAt: string | null) => {
-    setMessages((prev) =>
-      prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, content, edited_at: editedAt } : m)) : prev,
-    );
+  // 수정·소프트 삭제: 바뀐 칸만 덮어쓴다 (삭제돼도 줄은 남아 "삭제된 메시지입니다", 답글 수도 그대로)
+  const applyEdit = useCallback((id: number, patch: MessagePatch) => {
+    setMessages((prev) => (prev.some((m) => m.id === id) ? prev.map((m) => (m.id === id ? { ...m, ...patch } : m)) : prev));
   }, []);
 
+  // 실제 삭제(DELETE) — 첨부 업로드 실패 되돌리기, 관리자 정리 등 아직 실제로 지우는 경우
   const applyDelete = useCallback((id: number) => {
     setMessages((prev) => (prev.some((m) => m.id === id) ? prev.filter((m) => m.id !== id) : prev));
     // 답글이 지워졌으면 원본의 "답글 n개" 를 하나 줄인다
@@ -245,17 +244,13 @@ export function useChannelMessages(channelId: string) {
 
   useEffect(() => {
     const onEdited = (e: Event) => {
-      const { id, content, editedAt } = (e as CustomEvent<EditedDetail>).detail;
-      applyEdit(id, content, editedAt);
+      // 이 화면에서 수정·삭제(소프트 삭제)한 것 → 바뀐 칸만 반영
+      const { id, patch } = (e as CustomEvent<UpdatedDetail>).detail;
+      applyEdit(id, patch);
     };
-    const onDeleted = (e: Event) => applyDelete((e as CustomEvent<DeletedDetail>).detail.id);
-    window.addEventListener(EDITED_EVENT, onEdited);
-    window.addEventListener(DELETED_EVENT, onDeleted);
-    return () => {
-      window.removeEventListener(EDITED_EVENT, onEdited);
-      window.removeEventListener(DELETED_EVENT, onDeleted);
-    };
-  }, [applyEdit, applyDelete]);
+    window.addEventListener(UPDATED_EVENT, onEdited);
+    return () => window.removeEventListener(UPDATED_EVENT, onEdited);
+  }, [applyEdit]);
 
   // ---- 실시간 수신 (B-3) ----
   useEffect(() => {
@@ -285,8 +280,9 @@ export function useChannelMessages(channelId: string) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: `channel_id=eq.${channelId}` },
         (payload) => {
+          // 수정도 삭제(소프트 삭제)도 UPDATE 로 온다
           const row = payload.new as ChatMessage;
-          if (active) applyEdit(row.id, row.content, row.edited_at ?? null);
+          if (active) applyEdit(row.id, { content: row.content, edited_at: row.edited_at, deleted_at: row.deleted_at });
         },
       )
       // 누군가 메시지를 삭제 → 삭제 알림에는 id 만 온다 (Supabase 는 삭제 알림을 채널로 거를 수 없음)
