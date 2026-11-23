@@ -70,23 +70,12 @@ export function HeaderSearchSlot() {
   return <MessageSearch onSelect={(channelId) => selectChannel(channelId)} />;
 }
 
-/** [D] 메시지 안 첨부파일 미리보기 */
-export function AttachmentPreviewSlot() {
-  return (
-    <Placeholder owner="D">메시지 안 첨부파일 미리보기 (components/attachments)</Placeholder>
-  );
-}
+// [D] 첨부 버튼·첨부 미리보기·@멘션은 칸 대신 MessageArea 의 MessageInput(extras)·MessageList(renderAttachments)에
+//     직접 연결했다 (연결 완료)
 
 /** [E] AI 요약 · 할 일 추출 버튼 */
 export function AiToolsSlot() {
   return <Placeholder owner="E">AI 요약 · 할 일 추출 버튼 (app/api/ai)</Placeholder>;
-}
-
-/** [D] 입력창 아래 첨부 버튼 · @멘션 */
-export function ComposerExtrasSlot() {
-  return (
-    <Placeholder owner="D">첨부 버튼 · @멘션 (components/attachments, notifications)</Placeholder>
-  );
 }
 
 // ───────── 스레드 패널 ─────────
