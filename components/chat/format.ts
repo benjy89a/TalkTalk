@@ -38,8 +38,8 @@ export function isSameDay(a: string, b: string) {
 }
 
 // 이전 메시지와 묶어서(이름·시간 생략) 보여줄지
-export function isGroupedWith(prev: ChatMessage | undefined, cur: ChatMessage) {
-  if (!prev) return false;
+export function isGroupedWith(prev: ChatMessage | undefined, cur: ChatMessage | undefined) {
+  if (!prev || !cur) return false;
   if (prev.user_id !== cur.user_id) return false;
   if (!isSameDay(prev.created_at, cur.created_at)) return false;
   const gap = new Date(cur.created_at).getTime() - new Date(prev.created_at).getTime();

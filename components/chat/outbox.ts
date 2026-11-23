@@ -170,6 +170,9 @@ export function mergeWithOutbox(
     ? [...loaded, ...extra].sort((a, b) => a.id - b.id)
     : loaded;
 
-  const pending = outbox.pending.filter(belongs);
+  // 실시간 수신이 서버 응답보다 먼저 도착하면, 같은 메시지가 "보내는 중"과 "저장됨"으로 두 번 보일 수 있다
+  // → 이미 목록에 있는 client_id 는 보내는 중 목록에서 뺀다
+  for (const m of extra) seen.add(m.client_id);
+  const pending = outbox.pending.filter((m) => belongs(m) && !seen.has(m.client_id));
   return pending.length ? [...merged, ...pending] : merged;
 }
