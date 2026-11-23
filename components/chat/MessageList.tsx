@@ -1,9 +1,10 @@
 "use client";
 // [B] 채널 메시지 목록 (B-1)
 // 사용 예: <MessageList channelId={채널id} />
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import MessageItem from "./MessageItem";
 import { formatDateDivider, isGroupedWith, isSameDay } from "./format";
+import { mergeWithOutbox, useOutbox } from "./outbox";
 import { useChannelMessages } from "./useChannelMessages";
 
 type Props = {
@@ -11,10 +12,16 @@ type Props = {
 };
 
 export default function MessageList({ channelId }: Props) {
-  const { messages, status, reload } = useChannelMessages(channelId);
+  const { messages: loaded, status, reload } = useChannelMessages(channelId);
+  const outbox = useOutbox();
+  // 불러온 메시지 + 내가 방금 보낸 메시지(보내는 중 포함)
+  const messages = useMemo(
+    () => mergeWithOutbox(loaded, outbox, channelId, null),
+    [loaded, outbox, channelId],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 처음 불러오면 맨 아래(가장 최근 메시지)로 스크롤
+  // 처음 불러왔을 때와 새 메시지가 붙었을 때 맨 아래(가장 최근 메시지)로 스크롤
   useEffect(() => {
     if (status !== "ready") return;
     const el = scrollRef.current;
@@ -50,7 +57,7 @@ export default function MessageList({ channelId }: Props) {
         const prev = messages[i - 1];
         const newDay = !prev || !isSameDay(prev.created_at, m.created_at);
         return (
-          <Fragment key={m.id}>
+          <Fragment key={m.client_id}>
             {newDay && <DateDivider iso={m.created_at} />}
             <MessageItem message={m} grouped={isGroupedWith(prev, m)} />
           </Fragment>
