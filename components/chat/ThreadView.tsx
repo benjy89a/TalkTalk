@@ -101,7 +101,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
           <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
             <div ref={contentRef}>
               {/* 원본 메시지 */}
-              <MessageItem message={root} mine={root.user_id === myId} first last />
+              <MessageItem message={root} mine={root.user_id === myId} first last wide />
 
               {/* 구분선 */}
               <div className="my-3 flex items-center gap-3" role="separator">
@@ -120,7 +120,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               )}
 
               {/* 답글 목록 */}
-              <MessageRows messages={replies} myId={myId} />
+              <MessageRows messages={replies} myId={myId} wide />
             </div>
           </div>
           <NewMessagesButton count={unseen} onClick={scrollToBottom} />

@@ -21,6 +21,8 @@ type Props = {
   onOpenThread?: () => void;
   active?: boolean; // 지금 스레드 패널에 열린 메시지
   renderAttachments?: (message: DisplayMessage) => ReactNode;
+  // 좁은 칸(스레드 패널)용: 말풍선을 더 넓게(92%) 써서 글씨가 세로로 길게 꺾이지 않게
+  wide?: boolean;
 };
 
 const BUBBLE = "min-w-0 rounded-2xl px-3 py-1.5 text-sm leading-6 whitespace-pre-wrap break-words";
@@ -34,7 +36,10 @@ export default function MessageItem({
   onOpenThread,
   active,
   renderAttachments,
+  wide = false,
 }: Props) {
+  // 말풍선 최대 폭: 채널 본문은 75%(카톡처럼), 좁은 스레드 패널은 92%
+  const maxW = wide ? "max-w-[92%]" : "max-w-[75%]";
   const name = message.profiles?.name || "알 수 없음";
   const { status } = message;
 
@@ -90,7 +95,7 @@ export default function MessageItem({
   if (mine) {
     return (
       <div className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
-        <div className="flex max-w-[75%] items-end gap-1.5">
+        <div className={`flex ${maxW} items-end gap-1.5`}>
           {replyButton}
           {side}
           <p
@@ -100,7 +105,7 @@ export default function MessageItem({
             {message.content}
           </p>
         </div>
-        {attachments && <div className="mt-1 max-w-[75%]">{attachments}</div>}
+        {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
         {replyLink}
       </div>
     );
@@ -121,12 +126,12 @@ export default function MessageItem({
       </div>
       <div className="min-w-0 flex-1">
         {first && <p className="mb-1 text-xs leading-5 font-semibold text-gray-700">{name}</p>}
-        <div className="flex max-w-[75%] items-end gap-1.5">
+        <div className={`flex ${maxW} items-end gap-1.5`}>
           <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{message.content}</p>
           {side}
           {replyButton}
         </div>
-        {attachments && <div className="mt-1 max-w-[75%]">{attachments}</div>}
+        {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
         {replyLink}
       </div>
     </div>
