@@ -1,5 +1,5 @@
 "use client";
-// [B] 채널 메시지 목록 (B-1 목록 · B-3 실시간 · B-5 답글 버튼)
+// [B] 채널 메시지 목록 (B-1 목록 · B-3 실시간 · B-5 답글 버튼 · B-6 무한스크롤)
 // 사용 예: <MessageList channelId={채널id} />
 import { useEffect, useMemo } from "react";
 import { useMarkAsRead } from "@/components/notifications/useMarkAsRead";
@@ -16,7 +16,8 @@ type Props = {
 };
 
 export default function MessageList({ channelId }: Props) {
-  const { messages: loaded, replyStats, status, live, reload } = useChannelMessages(channelId);
+  const { messages: loaded, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder } =
+    useChannelMessages(channelId);
   const outbox = useOutbox();
   const myId = useCurrentUserId();
   const openedThread = useOpenThread();
@@ -41,11 +42,20 @@ export default function MessageList({ channelId }: Props) {
     closeThreadIfNotIn(channelId);
   }, [channelId]);
 
+  // (B-6) 맨 위 근처에 오면 이전 50개 불러오기
+  const canLoadOlder = status === "ready" && hasMore && !loadingOlder;
   const { scrollRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
     messages,
     status === "ready",
     channelId,
+    canLoadOlder ? loadOlder : undefined,
   );
+
+  // (B-6) 메시지가 적어서 스크롤이 생기지 않으면 위로 올릴 수가 없으므로 바로 더 불러온다
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (canLoadOlder && el && el.scrollHeight <= el.clientHeight) loadOlder();
+  }, [canLoadOlder, loaded.length, loadOlder, scrollRef]);
 
   if (status === "loading") {
     return <CenterText>메시지를 불러오는 중…</CenterText>;
@@ -68,6 +78,10 @@ export default function MessageList({ channelId }: Props) {
         <CenterText>아직 메시지가 없어요. 첫 메시지를 보내보세요!</CenterText>
       ) : (
         <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
+          {/* (B-6) 맨 위: 불러오는 중 / 더 없으면 채널 시작 안내 */}
+          <div className="py-2 text-center text-xs leading-5 text-gray-500">
+            {loadingOlder ? "이전 메시지를 불러오는 중…" : hasMore ? " " : "이 채널의 첫 메시지예요 👋"}
+          </div>
           <MessageRows
             messages={messages}
             myId={myId}
