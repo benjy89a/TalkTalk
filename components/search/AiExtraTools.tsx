@@ -4,29 +4,34 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AiExtraRequestError, requestExtractTasks, requestNaturalSearch, type AiSearchResult, type AiTaskResult } from "./extraClient";
+import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
+import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 
-type Props = { channelId: string | null };
+type Props = { channelId: string | null; requestGate?: AiRequestGate };
 type Kind = "search" | "tasks";
 type State = { status: "idle" } | { status: "loading"; kind: Kind }
   | { status: "search"; result: AiSearchResult } | { status: "tasks"; result: AiTaskResult }
   | { status: "error"; message: string };
 
-export default function AiExtraTools({ channelId }: Props) {
-  return <ChannelExtraTools key={channelId ?? "no-channel"} channelId={channelId} />;
+export default function AiExtraTools({ channelId, requestGate }: Props) {
+  return <ChannelExtraTools key={channelId ?? "no-channel"} channelId={channelId} requestGate={requestGate} />;
 }
 
-function ChannelExtraTools({ channelId }: Props) {
+function ChannelExtraTools({ channelId, requestGate }: Props) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(25);
   const [state, setState] = useState<State>({ status: "idle" });
-  const requestRef = useRef<AbortController | null>(null);
+  const [localGate] = useState(createAiRequestGate);
+  const gate = requestGate ?? localGate;
+  const active = useAiRequest(gate);
+  const requestRef = useRef<AiRequest | null>(null);
   const inputId = useId();
-  const busy = state.status === "loading";
+  const busy = active !== null;
   const cancel = useCallback(() => {
-    requestRef.current?.abort();
+    if (requestRef.current) gate.cancel(requestRef.current);
     requestRef.current = null;
     setState({ status: "idle" });
-  }, []);
+  }, [gate]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -36,25 +41,38 @@ function ChannelExtraTools({ channelId }: Props) {
       });
       unsubscribe = () => data.subscription.unsubscribe();
     } catch { /* 실제 요청에서 서버 설정 오류를 안내한다. */ }
-    return () => { unsubscribe?.(); requestRef.current?.abort(); requestRef.current = null; };
-  }, [cancel]);
+    return () => {
+      unsubscribe?.();
+      if (requestRef.current) gate.cancel(requestRef.current);
+      requestRef.current = null;
+      if (!requestGate) localGate.dispose();
+    };
+  }, [cancel, gate, localGate, requestGate]);
 
   async function run(kind: Kind) {
     if (!channelId || requestRef.current || (kind === "search" && !query.trim())) return;
-    const controller = new AbortController();
-    requestRef.current = controller;
+    const request = gate.start(kind, () => {
+      requestRef.current = null;
+      setState({ status: "idle" });
+    });
+    if (!request) return;
+    const controller = request.controller;
+    requestRef.current = request;
     setState({ status: "loading", kind });
     try {
       const next: State = kind === "search"
         ? { status: "search", result: await requestNaturalSearch(channelId, query, controller.signal) }
         : { status: "tasks", result: await requestExtractTasks(channelId, limit, controller.signal) };
-      if (!controller.signal.aborted && requestRef.current === controller) setState(next);
+      if (!controller.signal.aborted && requestRef.current === request) setState(next);
     } catch (error) {
-      if (!controller.signal.aborted && requestRef.current === controller) {
+      if (!controller.signal.aborted && requestRef.current === request) {
         setState({ status: "error", message: error instanceof AiExtraRequestError
           ? error.message : "연결 상태를 확인하고 다시 시도해 주세요." });
       }
-    } finally { if (requestRef.current === controller) requestRef.current = null; }
+    } finally {
+      if (requestRef.current === request) requestRef.current = null;
+      gate.finish(request);
+    }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void run("search"); }
@@ -90,7 +108,7 @@ function ChannelExtraTools({ channelId }: Props) {
         {(state.status === "search" || state.status === "tasks" || state.status === "error") && (
           <button type="button" onClick={cancel} className="rounded-md px-3 py-2 text-gray-600 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#1e325c]">결과 지우기</button>
         )}
-        {busy && <button type="button" onClick={cancel} className="rounded-md px-3 py-2 text-gray-600 focus-visible:ring-2 focus-visible:ring-[#1e325c]">취소</button>}
+        {!requestGate && active && <AiRequestProgress request={active} onCancel={cancel} />}
       </div>
       {state.status === "loading" && <p role="status" className="text-gray-600">{state.kind === "search" ? "질문을 해석하고 현재 채널에서 검색하고 있습니다." : "대화에서 할 일과 원문 근거를 확인하고 있습니다."} AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
       {state.status === "error" && <p role="alert" className="rounded-md border border-gray-200 bg-gray-50 p-3 leading-6">{state.message}</p>}

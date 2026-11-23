@@ -3,6 +3,8 @@
 // 사용 예: <AiKeyStatus />  (app/admin/slots.tsx 의 AdminAiSlot 에서 팀장이 연결)
 import { useEffect, useRef, useState } from "react";
 import { AiStatusError, fetchAiStatus, requestAiProbe, type AiProbeResult, type AiStatus } from "./aiStatusClient";
+import { createAiRequestGate, type AiRequest } from "./aiRequestGate";
+import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; value: AiStatus };
 type Probe = { status: "idle" } | { status: "running" } | { status: "done"; result: AiProbeResult } | { status: "error"; message: string };
@@ -10,7 +12,9 @@ type Probe = { status: "idle" } | { status: "running" } | { status: "done"; resu
 export default function AiKeyStatus() {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [probe, setProbe] = useState<Probe>({ status: "idle" });
-  const probeRef = useRef<AbortController | null>(null);
+  const probeRef = useRef<AiRequest | null>(null);
+  const [gate] = useState(createAiRequestGate);
+  const active = useAiRequest(gate);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -20,23 +24,31 @@ export default function AiKeyStatus() {
         if (controller.signal.aborted) return;
         setLoad({ status: "error", message: error instanceof AiStatusError ? error.message : "상태를 불러오지 못했어요." });
       });
-    return () => { controller.abort(); probeRef.current?.abort(); };
-  }, []);
+    return () => { controller.abort(); gate.dispose(); probeRef.current = null; };
+  }, [gate]);
 
   async function runProbe() {
     if (probeRef.current) return;
     if (!window.confirm("EXAONE을 한 번 호출해 연결을 확인합니다. 호출 비용이 생길 수 있어요. 계속할까요?")) return;
-    const controller = new AbortController();
-    probeRef.current = controller;
+    const request = gate.start("probe", () => {
+      probeRef.current = null;
+      setProbe({ status: "idle" });
+    });
+    if (!request) return;
+    const controller = request.controller;
+    probeRef.current = request;
     setProbe({ status: "running" });
     try {
       const result = await requestAiProbe(controller.signal);
-      if (!controller.signal.aborted) setProbe({ status: "done", result });
+      if (!controller.signal.aborted && probeRef.current === request) setProbe({ status: "done", result });
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && probeRef.current === request) {
         setProbe({ status: "error", message: error instanceof AiStatusError ? error.message : "연결에 실패했어요." });
       }
-    } finally { if (probeRef.current === controller) probeRef.current = null; }
+    } finally {
+      if (probeRef.current === request) probeRef.current = null;
+      gate.finish(request);
+    }
   }
 
   if (load.status === "loading") return <p role="status" className="text-sm text-gray-600">AI 설정 상태를 불러오는 중…</p>;
@@ -61,7 +73,8 @@ export default function AiKeyStatus() {
           연결 테스트
         </button>
         <p className="text-xs text-gray-600">버튼을 누를 때만 한 번 호출합니다. 자동 호출·재시도는 없습니다.</p>
-        {probe.status === "running" && <p role="status" className="text-gray-600">연결을 확인하는 중… (최대 4분)</p>}
+        {active && <AiRequestProgress request={active} onCancel={() => gate.cancel()} />}
+        {active && <p className="text-xs text-gray-600">취소해도 업체에서 이미 처리한 사용량은 되돌릴 수 없습니다.</p>}
         {probe.status === "done" && (probe.result.ok
           ? <p role="status">✅ 연결 성공 · {probe.result.ms}ms</p>
           : <p role="alert">❌ {probe.result.message}</p>)}
