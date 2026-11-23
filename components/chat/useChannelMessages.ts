@@ -6,11 +6,11 @@
 //      (실시간 재연결 / 탭으로 돌아옴 / 와이파이 다시 켜짐)
 // B-5: 원본 메시지마다 답글 수 · 마지막 답글 시간 (답글 자체는 본문에 안 보여준다)
 // B-6: 무한스크롤 — 맨 위로 올리면 "가장 오래된 id 보다 작은" 메시지 50개를 더 불러온다
+// 대량 메시지: 화면에는 최대 500개(MAX_RENDERED)만 쌓고, 재연결 때 놓친 게 200개(CATCH_UP_LIMIT) 넘으면 최신 50개로 새로 불러온다
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
 import {
-  CATCH_UP_BATCH,
   getProfile,
   mergeById,
   useOnline,
@@ -18,7 +18,13 @@ import {
   type LoadStatus,
 } from "./chatData";
 import { retryAllFailed } from "./outbox";
-import { MESSAGE_SELECT, PAGE_SIZE, type ChatMessage } from "./types";
+import {
+  CATCH_UP_LIMIT,
+  MAX_RENDERED,
+  MESSAGE_SELECT,
+  PAGE_SIZE,
+  type ChatMessage,
+} from "./types";
 
 export type { LiveStatus, LoadStatus } from "./chatData";
 
@@ -141,6 +147,9 @@ export function useChannelMessages(channelId: string) {
   const loadOlder = useCallback(async () => {
     const oldest = messagesRef.current[0];
     if (!oldest || loadingOlderRef.current) return;
+    // 대량 메시지: 이미 최대 개수만큼 쌓였으면 더 불러오지 않는다
+    const room = MAX_RENDERED - messagesRef.current.length;
+    if (room <= 0) return;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     try {
@@ -152,11 +161,11 @@ export function useChannelMessages(channelId: string) {
         .is("parent_id", null)
         .lt("id", oldest.id)
         .order("id", { ascending: false })
-        .limit(PAGE_SIZE);
+        .limit(Math.min(PAGE_SIZE, room));
       if (error) throw error;
       const rows = data as ChatMessage[];
       setMessages((prev) => mergeById(prev, rows));
-      setHasMore(rows.length === PAGE_SIZE);
+      setHasMore(rows.length === Math.min(PAGE_SIZE, room));
       await loadReplyStats(rows, () => false);
     } catch (err) {
       console.error("[chat] 이전 메시지 불러오기 실패", err);
@@ -165,6 +174,13 @@ export function useChannelMessages(channelId: string) {
       setLoadingOlder(false);
     }
   }, [channelId, loadReplyStats]);
+
+  // 대량 메시지: 최대 개수를 넘으면 가장 오래된 것부터 뺀다
+  // (위쪽을 읽는 중에 빼면 화면이 튀므로, 맨 아래를 보고 있을 때 MessageList 가 부른다)
+  const trimOld = useCallback(() => {
+    setMessages((prev) => (prev.length > MAX_RENDERED ? prev.slice(prev.length - MAX_RENDERED) : prev));
+    setHasMore(true); // 뺀 메시지가 있으니 더 오래된 게 남아 있다
+  }, []);
 
   // 받은 행을 본문 메시지 / 답글로 나눠 반영
   const applyRows = useCallback(
@@ -176,6 +192,9 @@ export function useChannelMessages(channelId: string) {
     },
     [channelId, addReplies],
   );
+
+  // 실시간 구독(아래)이 델타 동기화(catchUp, 더 아래)를 부를 수 있게 미리 자리를 만들어 둔다
+  const catchUpRef = useRef<() => void>(() => {});
 
   // ---- 실시간 수신 (B-3) ----
   useEffect(() => {
@@ -229,23 +248,23 @@ export function useChannelMessages(channelId: string) {
     catchingUp.current = true;
     const supabase = createClient();
     try {
-      let after = lastId;
-      // 놓친 메시지(본문 + 답글)가 많으면 500개씩 끝까지 받는다
-      for (;;) {
-        const { data, error } = await supabase
-          .from("messages")
-          .select(MESSAGE_SELECT)
-          .eq("channel_id", channelId)
-          .gt("id", after) // 마지막으로 받은 id 이후만
-          .order("id")
-          .limit(CATCH_UP_BATCH);
-        if (error) throw error;
-        const rows = data as ChatMessage[];
-        if (rows.length > 0) {
-          applyRows(rows);
-          after = rows[rows.length - 1].id;
-        }
-        if (rows.length < CATCH_UP_BATCH) break;
+      // 놓친 메시지(본문 + 답글)를 200개 + 1 까지만 물어본다
+      const { data, error } = await supabase
+        .from("messages")
+        .select(MESSAGE_SELECT)
+        .eq("channel_id", channelId)
+        .gt("id", lastId) // 마지막으로 받은 id 이후만
+        .order("id")
+        .limit(CATCH_UP_LIMIT + 1);
+      if (error) throw error;
+      const rows = data as ChatMessage[];
+      if (rows.length > CATCH_UP_LIMIT) {
+        // 너무 많이 놓침 → 하나씩 이어 붙이면 화면이 멈추므로 최신 50개로 새로 불러온다
+        // (그 이전 메시지는 위로 올려서 볼 수 있다)
+        lastIdByChannel.delete(channelId);
+        setReloadKey((k) => k + 1);
+      } else if (rows.length > 0) {
+        applyRows(rows);
       }
     } catch (err) {
       console.error("[chat] 놓친 메시지 받아오기 실패", err);
@@ -254,8 +273,7 @@ export function useChannelMessages(channelId: string) {
     }
   }, [channelId, applyRows]);
 
-  // 실시간 구독 콜백에서 항상 최신 catchUp 을 부르기 위해 ref 에 담아둔다
-  const catchUpRef = useRef(catchUp);
+  // 실시간 구독 콜백에서 항상 최신 catchUp 을 부르기 위해 ref 에 담아둔다 (ref 는 위쪽에서 미리 만듦)
   useEffect(() => {
     catchUpRef.current = catchUp;
   }, [catchUp]);
@@ -279,5 +297,8 @@ export function useChannelMessages(channelId: string) {
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
-  return { messages, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder };
+  // 최대 개수까지 쌓였는지 (위로 더 불러오지 않음 → "검색으로 찾아보세요" 안내)
+  const capped = messages.length >= MAX_RENDERED;
+
+  return { messages, replyStats, status, live, reload, hasMore, loadingOlder, loadOlder, capped, trimOld };
 }
