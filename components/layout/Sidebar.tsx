@@ -1,5 +1,6 @@
 // 왼쪽 사이드바: 워크스페이스 이름 / 채널 목록 / DM 목록
 import Placeholder from "./Placeholder";
+import LogoutButton from "@/components/channel/LogoutButton";
 
 export default function Sidebar() {
   return (
@@ -32,9 +33,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t border-white/10 p-3">
-        <Placeholder owner="C" dark>
-          내 프로필 · 로그아웃
-        </Placeholder>
+        <LogoutButton />
       </div>
     </aside>
   );
