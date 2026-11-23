@@ -29,6 +29,15 @@ export function LostBanner() {
   );
 }
 
+// 잠깐 보여주는 안내 띠 (파란색). 예: 놓친 메시지가 많아 최신부터 보여줄 때
+export function InfoBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <div role="status" className="shrink-0 bg-blue-50 px-4 py-1.5 text-center text-xs leading-5 text-blue-800">
+      {children}
+    </div>
+  );
+}
+
 export function NewMessagesButton({ count, onClick }: { count: number; onClick: () => void }) {
   if (count <= 0) return null;
   return (
