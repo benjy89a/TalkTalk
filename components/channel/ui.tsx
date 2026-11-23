@@ -19,6 +19,7 @@ export function toKoreanChannelError(err: unknown): string {
     case "23505":
       return "같은 이름의 채널이 이미 있어요. 다른 이름을 골라 주세요.";
     case "42501":
+    case "P0001": // DB 트리거가 막은 경우 (예: 관리자만 역할을 바꿀 수 있음)
       return "이 작업을 할 권한이 없어요.";
     case "23514":
       return "입력한 값이 올바르지 않아요.";
