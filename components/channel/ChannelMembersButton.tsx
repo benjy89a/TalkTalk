@@ -2,7 +2,8 @@
 
 // [C] 채널 멤버 보기 · 관리자 초대/내보내기 (C-5)
 // - 누구나: 이 채널 멤버 목록(이름, 관리자 표시)을 본다
-// - 비공개 채널의 관리자(role 'admin')만: 멤버 초대 · 내보내기 버튼이 보인다
+// - 이 채널을 관리할 수 있는 사람만 (DB 함수 can_manage_channel = 채널 관리자, 또는 공개 채널이면 서비스 관리자):
+//   멤버 초대 · 내보내기 버튼이 보인다 (DM 은 2명 고정이라 제외)
 // - 버튼을 숨기는 건 편의일 뿐, 진짜 권한 검사는 DB(RLS)가 한다
 //
 // 사용 예 (팀장 통합 때, 메시지 영역 헤더 오른쪽 등):
@@ -36,6 +37,8 @@ function MembersPanel({ channelId, onChanged }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // DB 에 물어본 "이 채널을 관리할 수 있는가" (확인 전·실패 시 false = 버튼 숨김)
+  const [canManageChannel, setCanManageChannel] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -45,9 +48,13 @@ function MembersPanel({ channelId, onChanged }: Props) {
       } = await supabase.auth.getSession();
       if (!session) throw new Error("no session");
       setMe(session.user.id);
-      const res = await fetchMembers(supabase, channelId);
+      const [res, manage] = await Promise.all([
+        fetchMembers(supabase, channelId),
+        supabase.rpc("can_manage_channel", { cid: channelId }),
+      ]);
       setChannel(res.channel);
       setMembers(res.members);
+      setCanManageChannel(!manage.error && manage.data === true);
     } catch (err) {
       setMembers([]);
       setError(toKoreanChannelError(err));
@@ -60,9 +67,8 @@ function MembersPanel({ channelId, onChanged }: Props) {
     void load();
   }, [load]);
 
-  const myRole = members?.find((m) => m.userId === me)?.role;
-  // 관리 기능은 비공개 채널 관리자에게만 보여 준다 (공개 채널은 누구나 스스로 참여, DM 은 2명 고정)
-  const canManage = channel?.type === "private" && myRole === "admin";
+  // 관리 버튼은 DB 함수 can_manage_channel 이 true 일 때만 (팀장 PR #35 기준). DM 은 2명 고정이라 제외
+  const canManage = canManageChannel && channel !== null && channel.type !== "dm";
 
   async function openInvite() {
     setError(null);
