@@ -82,14 +82,29 @@ export function getAttachments(messageId: number, force = false): Promise<Attach
   });
 }
 
-/** 파일 내려받기용 임시 주소 (원래 파일 이름으로 저장되게) */
-export async function getDownloadUrl(attachment: Attachment): Promise<string | null> {
-  const { data, error } = await createClient()
-    .storage.from(BUCKET)
-    .createSignedUrl(attachment.file_url, 60, { download: attachment.file_name });
-  if (error) {
-    console.error("[attachments] 다운로드 주소 만들기 실패:", error.message);
-    return null;
+/**
+ * 파일을 원래 이름(한글 포함) 그대로 내려받는다. 성공하면 true.
+ *
+ * Storage 임시 주소에 download 이름을 붙이는 방식은 한글 이름이
+ * "Test %EB%A9%94…txt" 처럼 깨진 채 저장됐다.
+ * 그래서 파일 내용을 먼저 받아 온 뒤, 브라우저 안에서 원래 이름을 붙여 저장한다.
+ */
+export async function downloadAttachment(attachment: Attachment): Promise<boolean> {
+  const { data, error } = await createClient().storage.from(BUCKET).download(attachment.file_url);
+  if (error || !data) {
+    console.error("[attachments] 다운로드 실패:", error?.message);
+    return false;
   }
-  return data.signedUrl;
+
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = attachment.file_name; // 같은 브라우저 안의 주소라 이 이름이 그대로 쓰인다
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // 저장이 시작된 뒤 임시 주소를 정리한다
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return true;
 }

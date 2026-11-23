@@ -15,7 +15,7 @@
 //   (메시지가 먼저 도착하고 첨부 정보가 조금 늦게 저장되는 경우를 위해 잠깐 다시 확인한다)
 import { useEffect, useState } from "react";
 import { FILE_MESSAGE_PREFIX, isImageFile } from "./fileRules";
-import { getAttachments, getDownloadUrl, type AttachmentView } from "./attachmentLoader";
+import { downloadAttachment, getAttachments, type AttachmentView } from "./attachmentLoader";
 import { ATTACHMENTS_EVENT, type AttachmentsEventDetail } from "./uploadAttachment";
 
 type Props = {
@@ -110,10 +110,9 @@ function FileRow({ attachment }: { attachment: AttachmentView }) {
   async function download() {
     setBusy(true);
     setFailed(false);
-    const url = await getDownloadUrl(attachment);
+    const ok = await downloadAttachment(attachment);
     setBusy(false);
-    if (url) window.location.assign(url);
-    else setFailed(true);
+    if (!ok) setFailed(true);
   }
 
   return (
