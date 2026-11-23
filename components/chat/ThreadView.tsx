@@ -2,7 +2,9 @@
 // [B] 스레드 패널 내용 (B-5) — 원본 메시지 + 답글 목록 + 답글 입력창
 // 사용 예 (오른쪽 스레드 패널 칸에): <ThreadView />
 //   → 메시지 목록에서 "답글"을 누르면 그 메시지의 스레드가 여기에 열린다 (threads.ts 공유 저장소)
-import { useMemo } from "react";
+//   → 스레드 패널 바깥을 클릭하거나 Esc 를 누르면 닫힌다
+//     (다른 메시지의 "답글" 버튼[data-thread-trigger]을 누르면 닫지 않고 그 스레드로 바뀐다)
+import { useEffect, useMemo, useRef } from "react";
 import { CenterText, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
 import MessageInput from "./MessageInput";
 import MessageItem from "./MessageItem";
@@ -31,6 +33,30 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     () => mergeWithOutbox(loaded, outbox, channelId, rootId),
     [loaded, outbox, channelId, rootId],
   );
+  // 바깥 클릭 · Esc 로 닫기
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Element | null;
+      if (!target || !target.isConnected) return;
+      // 스레드 패널 안(패널 제목 포함)을 누른 건 무시
+      const panel = rootRef.current?.closest("aside") ?? rootRef.current;
+      if (panel?.contains(target)) return;
+      // 다른 메시지의 "답글" 버튼 → 그 스레드로 바뀌므로 닫지 않음
+      if (target.closest("[data-thread-trigger]")) return;
+      closeThread();
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeThread();
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   const { scrollRef, contentRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
     replies,
     status === "ready",
@@ -38,7 +64,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={rootRef} className="flex min-h-0 flex-1 flex-col">
       {/* 닫기 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-2">
         <span className="text-xs leading-5 font-medium text-gray-600">답글 {replies.length}개</span>

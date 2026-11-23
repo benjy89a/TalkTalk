@@ -10,8 +10,9 @@
 | B-4 델타 동기화 | `feature/gyeseop-delta-sync` (B-3 위에서 이어서) | ✅ main 머지됨 (PR #9) |
 | 읽음 처리 연결 (D-1 연동) | `feature/gyeseop-delta-sync` | ✅ main 머지됨 (PR #9) |
 | B-5 스레드(답글) | `feature/gyeseop-thread` (B-4 위에서 이어서) | ✅ main 머지됨 (PR #13) |
-| B-6 무한스크롤 (+ 맨 아래 잘림 수정) | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | PR #18 올림 · 머지 대기 |
-| 첨부 칸 열기 (CONTRACTS.md · D 요청) | `feature/gyeseop-attach-slots` (B-6 위에서 이어서) | 완료 · 로컬 확인 (B-6 머지 후 PR) |
+| B-6 무한스크롤 (+ 맨 아래 잘림 수정) | `feature/gyeseop-infinite-scroll` (B-5 위에서 이어서) | ✅ main 머지됨 (PR #18) |
+| 첨부 칸 열기 (CONTRACTS.md · D 요청) | `feature/gyeseop-attach-slots` | 완료 · 로컬 확인 (PR 올릴 차례) |
+| 스레드 바깥 클릭 · Esc 로 닫기 | `feature/gyeseop-thread-close` (첨부 칸 위에서 이어서) | 완료 · 로컬 확인 |
 
 > ⚠️ 브랜치가 B-1 → … → B-5 → B-6 순서로 이어져 있어요. PR 도 **B-4 → B-5 → B-6 순서로, 앞의 것이 머지된 뒤** 올립니다.
 
@@ -112,6 +113,13 @@
 - 내 컴퓨터 테스트 페이지 `/dev-chat` 과 커밋 제외 설정도 삭제. 이후 테스트는 진짜 로그인 화면(`/login`)으로.
 - 계정 삭제는 Supabase 관리 화면에서만 가능하고 Auth 는 팀장 담당이라 남겨 둠.
 
+### 11. 스레드 바깥 클릭하면 닫기 (계섭님 요청)
+- 요청: "답글을 누르면 스레드가 생기고, 다른 곳을 누르면 사라지게".
+- 나눠 보니 ① **닫히는 동작**은 내 `ThreadView` 에서 처리 가능, ② **패널 틀이 생기고 사라지는 것**은 팀장님 `ThreadPanel.tsx`(항상 자리를 차지) → ①만 하고 ②는 협의 요청.
+- 구현: 스레드 패널 **바깥**을 누르면 닫힘, **패널 안**(답글 입력 등)은 그대로, **다른 메시지의 "답글"**(`data-thread-trigger`)은 닫지 않고 그 스레드로 바뀜, 덤으로 **Esc** 로 닫기.
+- 🔎 테스트 중 테스트c 계정에서 #general 메시지가 안 보임 → 원인: 그 계정이 #general 에서 "나가기" 한 상태(멤버가 아니라 안 보이는 게 정상). 계섭테스트1로 확인.
+- 검증(테스트 메시지 2개를 잠깐 보냈다가 바로 삭제): 답글 클릭 → 열림 ✅ / 패널 안 클릭 → 유지 ✅ / 다른 답글 → 그 스레드로 바뀜 ✅ / 메시지 영역·사이드바·아래 입력창 클릭 → 닫힘 ✅ / Esc → 닫힘 ✅
+
 ### 팀 규정 점검
 - CLAUDE.md · PR 템플릿 · TECH_SPEC · FINAL_CHECKLIST 와 대조 → 위반 없음. `MessageItem.tsx` 에 빠져 있던 `"use client"` 만 규칙대로 추가.
 - 모든 변경은 `components/chat/` 안. 패키지 추가 없음. 비밀값 0건.
@@ -193,7 +201,7 @@ import ThreadView from "@/components/chat/ThreadView";
 
 ## 팀장님께 협의할 것
 
-1. **화면 연결**: ✅ 메시지 목록·입력창은 팀장님이 연결해 주심 (PR #7). 남은 것: B-5 머지 후 `ThreadPanel.tsx` 의 B 칸에 `<ThreadView />`. (스레드 패널을 스레드가 열렸을 때만 보이게 하려면 `useOpenThread()` 로 열림 여부를 알 수 있어요)
+1. **화면 연결**: ✅ 메시지 목록·입력창·스레드 패널 모두 팀장님이 연결해 주심 (PR #7, #20). 남은 것: 스레드가 열렸을 때만 패널이 보이도록 `ThreadPanel.tsx` 에서 `useOpenThread()` 사용 (닫히면 패널 자체가 사라지게). (스레드 패널을 스레드가 열렸을 때만 보이게 하려면 `useOpenThread()` 로 열림 여부를 알 수 있어요)
 2. **메시지 모양**: 카톡처럼 내 메시지는 오른쪽 말풍선으로 바꿨어요. 3단 레이아웃은 그대로인데, Mattermost 방식(모두 왼쪽 정렬)과는 달라요. 팀 방향과 괜찮은지 봐주세요. (재문님 디자인 가이드와도 맞춰볼게요)
 3. **사이드바 연결 시 참고**: 서보님 `MyProfile` 에 로그아웃 버튼이 들어 있어서, `LogoutButton` 을 따로 넣으면 버튼이 두 개가 돼요. `MyProfile` 하나만 넣어주세요.
 4. **테스트 데이터**: ✅ 11/23 정리 완료 — #general 테스트 메시지 37개, 비공개 테스트 채널 `gyeseop-test`(메시지 121개) 삭제. **남은 것: 테스트 계정 3개**(`gyeseop.test1/2@example.com`, 계섭님이 만든 새 계정) — 시연용으로 쓸지, 지울지(Supabase 관리 화면, 팀장님) 정해주세요.

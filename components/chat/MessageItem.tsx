@@ -65,6 +65,7 @@ export default function MessageItem({
       <button
         type="button"
         onClick={onOpenThread}
+        data-thread-trigger
         className="invisible shrink-0 rounded px-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible hover:text-[#1e325c] focus-visible:visible"
       >
         답글
@@ -76,6 +77,7 @@ export default function MessageItem({
       <button
         type="button"
         onClick={onOpenThread}
+        data-thread-trigger
         className="mt-0.5 text-xs leading-5 font-medium text-blue-700 hover:underline"
       >
         답글 {thread.count}개 · {formatTime(thread.lastAt)}
