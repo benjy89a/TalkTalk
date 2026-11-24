@@ -50,3 +50,16 @@ export function NewMessagesButton({ count, onClick }: { count: number; onClick: 
     </button>
   );
 }
+
+// 메시지로 이동해서 예전 구간을 보는 중일 때: 최신 메시지로 돌아가기
+export function JumpToLatestButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute bottom-4 left-1/2 inline-flex min-h-9 -translate-x-1/2 items-center gap-1 rounded-full bg-[#1e325c] px-4 py-2 text-sm font-medium text-white shadow-md transition-colors hover:bg-[#172746] focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:ring-offset-2 focus-visible:outline-none"
+    >
+      최신 메시지로 ↓
+    </button>
+  );
+}

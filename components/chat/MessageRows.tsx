@@ -40,6 +40,8 @@ export default function MessageRows({
         return (
           <Fragment key={m.client_id}>
             {newDay && <DateDivider iso={m.created_at} />}
+            {/* data-message-id: 메시지로 이동할 때 이 말풍선을 찾는 표시 (저장된 메시지만). 강조색은 useStickToBottom 이 잠깐 붙임 */}
+            <div data-message-id={m.status ? undefined : m.id} className="rounded-md transition-colors duration-700">
             <MessageItem
               message={m}
               // 보내는 중/실패 표시가 있는 건 방금 내가 보낸 것
@@ -54,6 +56,7 @@ export default function MessageRows({
               reactions={reactions ? summarize(reactions[m.id], myId) : undefined}
               onReact={onReact && !m.status ? (emoji, mine) => onReact(m.id, emoji, mine) : undefined}
             />
+            </div>
           </Fragment>
         );
       })}

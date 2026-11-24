@@ -4,7 +4,9 @@
 //  - 위쪽 예전 메시지를 읽는 중 → 그대로 두고 "새 메시지 n개" 개수를 알려줌
 //  - (B-6) 맨 위 근처에 오면 onReachTop 호출, 위에 메시지가 붙어도 보던 위치가 튀지 않게 맞춤
 //  - 맨 아래를 보고 있을 때 내용이 길어지면(예: "답글 n개" 가 늦게 붙음) 맨 아래로 따라감
+//  - 메시지로 이동(scrollToMessage): 검색 결과로 고른 말풍선을 화면 가운데로
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { HIGHLIGHT_MS } from "./focus";
 import type { DisplayMessage } from "./outbox";
 
 // 맨 아래에서 이 정도(px) 안쪽이면 "맨 아래를 보고 있다"고 본다
@@ -86,6 +88,22 @@ export function useStickToBottom(
     }
   }
 
+  // 메시지로 이동 (검색 결과 등): 그 말풍선이 화면 가운데에 오게 스크롤하고 잠깐 노랗게 강조한다. 못 찾으면 false
+  // 바로 onScroll 을 불러 "맨 아래를 보고 있음" 상태를 갱신 → 늦게 붙는 내용 때문에 맨 아래로 끌려가지 않게
+  // 강조는 화면 요소에 색 클래스를 직접 붙였다 뗀다 (상태로 두면 그때마다 목록 전체를 다시 그림)
+  function scrollToMessage(id: number) {
+    const el = scrollRef.current;
+    const target = el?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+    if (!el || !target) return false;
+    const box = el.getBoundingClientRect();
+    const t = target.getBoundingClientRect();
+    el.scrollTop += t.top - box.top - (el.clientHeight - t.height) / 2;
+    onScroll();
+    target.classList.add("bg-yellow-100");
+    setTimeout(() => target.classList.remove("bg-yellow-100"), HIGHLIGHT_MS);
+    return true;
+  }
+
   function scrollToBottom() {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
@@ -95,5 +113,5 @@ export function useStickToBottom(
   const seenIndex = seenKey ? messages.findIndex((m) => m.client_id === seenKey) : -1;
   const unseen = atBottom || seenIndex < 0 ? 0 : messages.length - 1 - seenIndex;
 
-  return { scrollRef, contentRef, onScroll, scrollToBottom, unseen, atBottom };
+  return { scrollRef, contentRef, onScroll, scrollToBottom, scrollToMessage, unseen, atBottom };
 }
