@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AiStatusError, aiTargetText, fetchAiStatus, requestAiProbe, type AiProbeResult, type AiStatus } from "./aiStatusClient";
 import { createAiRequestGate, type AiRequest } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
+import AiProviderSelect from "./AiProviderSelect";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; value: AiStatus };
 type Probe = { status: "idle" } | { status: "running" } | { status: "done"; result: AiProbeResult } | { status: "error"; message: string };
@@ -16,6 +17,8 @@ export default function AiKeyStatus() {
   const [gate] = useState(createAiRequestGate);
   const active = useAiRequest(gate);
 
+  const [reloadKey, setReloadKey] = useState(0); // 업체 선택을 저장한 뒤 상태를 다시 불러오는 신호
+
   useEffect(() => {
     const controller = new AbortController();
     fetchAiStatus(controller.signal)
@@ -24,8 +27,10 @@ export default function AiKeyStatus() {
         if (controller.signal.aborted) return;
         setLoad({ status: "error", message: error instanceof AiStatusError ? error.message : "상태를 불러오지 못했어요." });
       });
-    return () => { controller.abort(); gate.dispose(); probeRef.current = null; };
-  }, [gate]);
+    return () => controller.abort();
+  }, [reloadKey]);
+
+  useEffect(() => () => { gate.dispose(); probeRef.current = null; }, [gate]);
 
   async function runProbe() {
     if (probeRef.current) return;
@@ -63,9 +68,14 @@ export default function AiKeyStatus() {
         {model && <div className="flex gap-2"><dt className="w-24 text-gray-600">모델</dt><dd>{model}</dd></div>}
         <div className="flex gap-2"><dt className="w-24 text-gray-600">API 키</dt><dd>{keyConfigured ? "✅ 설정됨" : "❌ 설정 안 됨"}</dd></div>
       </dl>
-      <p className="text-xs leading-5 text-gray-600">
-        AI 제공자는 서버 환경변수 <code>AI_PROVIDER</code> 로 고릅니다. 비워 두거나 <code>exaone</code> 이면 EXAONE, <code>gemini</code> 이면 Gemini(키 <code>GEMINI_API_KEY</code>, 모델은 선택 <code>GEMINI_MODEL</code>)를 씁니다. 바꾼 뒤에는 다시 배포해야 적용됩니다.
-      </p>
+      {load.value.selection && load.value.providers
+        ? <AiProviderSelect key={`${load.value.selection.provider}|${load.value.selection.geminiModel}|${load.value.selection.updatedAt}`}
+            status={load.value} onSaved={() => setReloadKey((value) => value + 1)} />
+        : (
+          <p className="text-xs leading-5 text-gray-600">
+            AI 제공자는 서버 환경변수 <code>AI_PROVIDER</code> 로 고릅니다. 비워 두거나 <code>exaone</code> 이면 EXAONE, <code>gemini</code> 이면 Gemini(키 <code>GEMINI_API_KEY</code>, 모델은 선택 <code>GEMINI_MODEL</code>)를 씁니다. 바꾼 뒤에는 다시 배포해야 적용됩니다.
+          </p>
+        )}
       {!keyConfigured && (
         <p className="rounded-md border border-gray-200 bg-gray-50 p-3 leading-6">
           Vercel 프로젝트 → Settings → Environment Variables 에서 <code>{keyEnvName ?? "AI API 키 환경변수"}</code> 를 넣고 다시 배포하세요.

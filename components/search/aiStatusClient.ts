@@ -1,5 +1,25 @@
 /** 관리자 화면용 상태. keyEnvName 은 키를 넣을 환경변수의 "이름"이다(값이 아님). */
-export type AiStatus = { provider: string; providerId?: string; model?: string; keyEnvName?: string; keyConfigured: boolean };
+export type AiProviderId = "exaone" | "gemini";
+/** 관리자 업체 선택 상태(서버 /api/ai/status 의 selection). 키 값은 없다. */
+export type AiStatusSelection = {
+  /** 지금 적용 중인 선택의 출처: 관리자 설정(settings) · 환경변수(env) */
+  source: "settings" | "env";
+  /** DB 에 저장된 업체(null = 환경변수 따르기) */
+  provider: AiProviderId | null;
+  /** DB 에 저장된 Gemini 모델(null = 환경변수·기본 모델) */
+  geminiModel: string | null;
+  updatedAt: string | null;
+  /** 환경변수(AI_PROVIDER)가 가리키는 업체 */
+  envProviderId: AiProviderId;
+  /** 설정 테이블(007)을 읽을 수 있는가 */
+  settingsAvailable: boolean;
+};
+/** 업체별 키 환경변수 이름·설정 여부(키 값 아님)·기본 모델 */
+export type AiProviderOption = { id: AiProviderId; displayName: string; keyEnvName: string; keyConfigured: boolean; defaultModel: string };
+export type AiStatus = {
+  provider: string; providerId?: string; model?: string; keyEnvName?: string; keyConfigured: boolean;
+  selection?: AiStatusSelection; providers?: AiProviderOption[];
+};
 /** 로그인한 누구나 받는 업체·모델 이름(안내 문구용). */
 export type AiProviderInfo = { provider: string; providerId?: string; model?: string };
 export type AiProbeResult = { ok: true; ms: number } | { ok: false; message: string };
@@ -13,6 +33,31 @@ function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 const optionalString = (value: unknown) => value === undefined || typeof value === "string";
+const providerId = (value: unknown): value is AiProviderId => value === "exaone" || value === "gemini";
+
+function parseSelection(value: unknown): AiStatusSelection | null {
+  if (!object(value)) return null;
+  if (!(value.source === "settings" || value.source === "env") || !providerId(value.envProviderId)
+    || !(value.provider === null || providerId(value.provider))
+    || !(value.geminiModel === null || typeof value.geminiModel === "string")
+    || !(value.updatedAt === null || typeof value.updatedAt === "string")
+    || typeof value.settingsAvailable !== "boolean") return null;
+  return {
+    source: value.source, provider: value.provider, geminiModel: value.geminiModel, updatedAt: value.updatedAt,
+    envProviderId: value.envProviderId, settingsAvailable: value.settingsAvailable,
+  };
+}
+
+function parseProviders(value: unknown): AiProviderOption[] | null {
+  if (!Array.isArray(value) || value.length > 4) return null;
+  const list: AiProviderOption[] = [];
+  for (const item of value) {
+    if (!object(item) || !providerId(item.id) || typeof item.displayName !== "string" || typeof item.keyEnvName !== "string"
+      || typeof item.keyConfigured !== "boolean" || typeof item.defaultModel !== "string") return null;
+    list.push({ id: item.id, displayName: item.displayName, keyEnvName: item.keyEnvName, keyConfigured: item.keyConfigured, defaultModel: item.defaultModel });
+  }
+  return list;
+}
 
 async function call(method: "GET" | "POST", signal: AbortSignal, fetcher: typeof fetch, query = ""): Promise<unknown> {
   signal.throwIfAborted();
@@ -38,10 +83,15 @@ export async function fetchAiStatus(signal: AbortSignal, fetcher: typeof fetch =
     throw new AiStatusError("INVALID_RESPONSE", "응답 형식을 확인하지 못했어요.");
   }
   // 이전 응답(providerId·keyEnvName 없음)과 같은 모양을 유지하고, 있을 때만 덧붙인다.
+  const selection = body.selection === undefined ? undefined : parseSelection(body.selection);
+  const providers = body.providers === undefined ? undefined : parseProviders(body.providers);
+  if (selection === null || providers === null) throw new AiStatusError("INVALID_RESPONSE", "응답 형식을 확인하지 못했어요.");
   return {
     provider: body.provider, model: body.model, keyConfigured: body.keyConfigured,
     ...(body.providerId !== undefined ? { providerId: body.providerId } : {}),
     ...(body.keyEnvName !== undefined ? { keyEnvName: body.keyEnvName } : {}),
+    ...(selection !== undefined ? { selection } : {}),
+    ...(providers !== undefined ? { providers } : {}),
   };
 }
 
