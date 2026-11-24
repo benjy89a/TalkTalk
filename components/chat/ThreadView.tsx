@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { CenterText, LostBanner, NewMessagesButton, RetryButton, ScrollDownButton } from "./ChatBits";
 import { composerScope } from "./composer";
+import { MentionProvider } from "./mentionLink";
 import MessageInput from "./MessageInput";
 import MessageItem from "./MessageItem";
 import MessageRows from "./MessageRows";
@@ -98,6 +99,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     // h-full: 바깥 패널 칸(팀장님 ThreadPanel 의 overflow-y-auto 칸) 높이에 딱 맞춘다.
     // 없으면 스레드 전체가 바깥 칸에서 한 덩어리로 스크롤돼서, 답글이 많을 때 입력창이 한참 아래로 밀려나고
     // "맨 아래로 가기"도 동작하지 않았다.
+    <MentionProvider channelId={channelId}>
     <div ref={rootRef} className="flex h-full min-h-0 flex-1 flex-col">
       {/* 닫기 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-2">
@@ -174,5 +176,6 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
         <MessageInput key={rootId} channelId={channelId} parentId={rootId} placeholder="댓글 보내기" />
       </div>
     </div>
+    </MentionProvider>
   );
 }

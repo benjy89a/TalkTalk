@@ -108,14 +108,20 @@ export default function MessageItem({
   const [tapOpen, setTapOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const closeTap = useCallback(() => setTapOpen(false), []);
-  // 마우스 막대를 말풍선 위/아래 어디에 띄울지 (마우스를 올릴 때 위쪽 공간을 재서 정함)
-  const [barBelow, setBarBelow] = useState(false);
+  // 마우스 막대를 어디에 띄울지 (마우스를 올릴 때 공간을 재서 정함)
+  //  side : 말풍선 옆 (기본 — 윗글·이름을 가리지 않음). 내 메시지는 왼쪽, 상대 메시지는 오른쪽
+  //  above: 옆자리가 모자랄 때(좁은 창) 말풍선 위 / below: 그마저 목록 맨 위라 잘릴 때 말풍선 아래
+  const [barPos, setBarPos] = useState<"side" | "above" | "below">("side");
   function placeBar() {
     const row = rowRef.current;
     const box = row?.closest(".overflow-y-auto");
     if (!row || !box) return;
-    const below = row.getBoundingClientRect().top - box.getBoundingClientRect().top < 32;
-    if (below !== barBelow) setBarBelow(below);
+    const r = row.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    const need = mine ? 250 : 190; // 막대 폭 (내 메시지는 수정·삭제까지 있어 더 넓음)
+    const room = mine ? r.left - b.left : b.right - r.right;
+    const pos = room >= need ? "side" : r.top - b.top < 32 ? "below" : "above";
+    if (pos !== barPos) setBarPos(pos);
   }
   useDismiss(wrapRef, tapOpen, closeTap);
   const [confirming, setConfirming] = useState(false); // 삭제 확인 줄
@@ -506,12 +512,18 @@ export default function MessageItem({
   //   마우스를 천천히 올리면 틈을 지나는 순간 "벗어남"이 되어 막대가 꺼졌다
   //   → 바깥 칸을 투명하게 말풍선에 딱 붙여(틈 대신 투명 여백) 마우스가 말풍선 → 막대로 가는 길이 끊기지 않게.
   //   목록 맨 위 메시지는 막대가 스크롤 칸 위로 잘려 안 보였다 → 위 공간이 모자라면 말풍선 아래에 띄운다.
+  // 막대가 위에 뜨면 윗글·이름을 가려 누를 수 없었다(36번) → 옆자리가 있으면 말풍선 옆에 띄움 (위는 좁은 창일 때만).
+  //   안 보일 땐 display:none 으로 둬서 (invisible 은 자리는 없어도 스크롤 칸을 넓혀 가로 스크롤을 만들 수 있음) 옆에 둬도 안전.
   const hasHoverButtons = !!(extraActions || ownActions || reactButton || replyButton);
   const hoverBar = hasHoverButtons ? (
     <span
-      className={`absolute z-10 ${barBelow ? "top-full pt-1" : "bottom-full pb-1"} ${mine ? "right-0" : "left-0"} ${
-        picking ? "invisible" : "invisible group-hover:visible focus-within:visible"
-      } ${HOVER_ONLY}`}
+      className={`absolute z-10 ${
+        barPos === "side"
+          ? mine
+            ? "right-full bottom-0 pr-1"
+            : "left-full bottom-0 pl-1"
+          : `${barPos === "below" ? "top-full pt-1" : "bottom-full pb-1"} ${mine ? "right-0" : "left-0"}`
+      } ${picking ? "hidden" : "hidden group-hover:block"} ${HOVER_ONLY}`}
     >
       <span className="flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap text-gray-500 shadow-sm">
       {mine ? (
@@ -620,7 +632,7 @@ export default function MessageItem({
       </div>
       <div className="min-w-0 flex-1">
         {first && <p className="mb-1 text-xs leading-5 font-semibold text-gray-700">{name}</p>}
-        <div ref={rowRef} className={`relative flex ${maxW} items-end gap-1.5`}>
+        <div ref={rowRef} className={`relative flex w-fit ${maxW} items-end gap-1.5`}>
           {picker}
           {deleted ? (
             deletedBubble
