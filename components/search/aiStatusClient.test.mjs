@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aiTargetText, fetchAiProviderInfo, fetchAiStatus, requestAiProbe } from "./aiStatusClient.ts";
+import { aiTargetText, aiWaitHint, fetchAiProviderInfo, fetchAiStatus, requestAiProbe } from "./aiStatusClient.ts";
 
 const reply = (status, body) => async () => new Response(JSON.stringify(body), { status });
 const signal = () => new AbortController().signal;
@@ -56,4 +56,25 @@ test("안내문 전송 대상 문구: 업체 이름을 알면 괄호로 넣고, 
   assert.equal(aiTargetText("EXAONE"), "외부 AI 서비스(EXAONE)");
   assert.equal(aiTargetText(null), "외부 AI 서비스");
   assert.equal(aiTargetText(""), "외부 AI 서비스");
+});
+
+test("대기 안내: EXAONE(·업체를 모를 때)은 기존 '최대 4분' 문구 그대로, Gemini 는 '보통 수 초'", () => {
+  const exaone = { progress: "AI 대기 최대 4분", detail: "AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다." };
+  assert.deepEqual(aiWaitHint("exaone"), exaone);
+  assert.deepEqual(aiWaitHint(undefined), exaone);
+  assert.deepEqual(aiWaitHint("unknown"), exaone);
+  // 오래 걸려도 EXAONE 문구는 바뀌지 않는다
+  assert.deepEqual(aiWaitHint("exaone", 120000), exaone);
+  const gemini = aiWaitHint("gemini");
+  assert.equal(gemini.progress, "보통 수 초");
+  assert.match(gemini.detail, /보통 몇 초/);
+  assert.match(gemini.detail, /최대 4분까지 기다리며, 취소할 수 있습니다/); // 오래 걸리는 경우도 안내문 하나로 담는다
+  assert.doesNotMatch(gemini.detail, /최대 4분 정도 기다립니다/); // EXAONE 문구와 구분
+});
+
+test("대기 안내: Gemini 가 20초 이상 걸리면 '평소보다 오래 걸립니다 · 최대 4분 대기'로 바뀜", () => {
+  assert.equal(aiWaitHint("gemini", 19999).progress, "보통 수 초");
+  const slow = aiWaitHint("gemini", 20000);
+  assert.equal(slow.progress, "평소보다 오래 걸립니다 · 최대 4분 대기");
+  assert.equal(slow.detail, aiWaitHint("gemini").detail); // 안내문은 시간과 무관
 });

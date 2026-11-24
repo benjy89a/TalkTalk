@@ -71,3 +71,20 @@ export async function requestAiProbe(signal: AbortSignal, fetcher: typeof fetch 
 export function aiTargetText(label: string | null): string {
   return label ? `외부 AI 서비스(${label})` : "외부 AI 서비스";
 }
+
+/**
+ * 대기 안내 문구. EXAONE 은 느려서 "최대 4분"(기존 문구 그대로), Gemini 는 보통 몇 초라 그에 맞게 안내한다.
+ * 서버가 기다려 주는 최대 시간은 두 업체 모두 4분으로 같다. 업체를 모르면(아직 못 받았거나 실패) 기존 EXAONE 문구.
+ * @param elapsedMs 지금까지 걸린 시간(밀리초). Gemini 가 평소보다 오래 걸릴 때 안내를 바꾼다.
+ */
+export function aiWaitHint(providerId: string | undefined, elapsedMs = 0): { progress: string; detail: string } {
+  if (providerId === "gemini") {
+    // detail 은 시간이 지나도 다시 그려지지 않는 안내문이라 시간과 무관하게 두 경우를 모두 담는다. progress 만 시간에 따라 바뀐다.
+    const detail = "AI 응답은 보통 몇 초 안에 도착합니다. 오래 걸려도 최대 4분까지 기다리며, 취소할 수 있습니다.";
+    return elapsedMs >= 20000
+      ? { progress: "평소보다 오래 걸립니다 · 최대 4분 대기", detail }
+      : { progress: "보통 수 초", detail };
+  }
+  return { progress: "AI 대기 최대 4분", detail: "AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다." };
+}
+

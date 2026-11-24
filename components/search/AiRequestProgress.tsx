@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { formatAiElapsed, type AiRequest, type AiRequestGate } from "./aiRequestGate";
+import { aiWaitHint } from "./aiStatusClient";
+import { useAiProviderInfo } from "./useAiProviderLabel";
 
 const emptySnapshot = () => null;
 export function useAiRequest(gate: AiRequestGate) {
@@ -21,10 +23,12 @@ export default function AiRequestProgress({ request, onCancel, background = fals
     return () => clearInterval(timer);
   }, [request]);
   const label = labels[request.kind];
+  // 업체별 대기 안내: EXAONE 은 기존 "AI 대기 최대 4분", Gemini 는 "보통 수 초"(오래 걸리면 안내가 바뀐다)
+  const hint = aiWaitHint(useAiProviderInfo()?.providerId, now - request.startedAt);
   return (
     <div aria-label="AI 실행 상태" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600">
       <span role="status">{label} 진행 중{background ? " · 패널 닫힘" : ""}</span>
-      <span role="timer" aria-live="off">{formatAiElapsed(request.startedAt, now)} 경과 · AI 대기 최대 4분</span>
+      <span role="timer" aria-live="off">{formatAiElapsed(request.startedAt, now)} 경과 · {hint.progress}</span>
       <button type="button" onClick={onCancel} aria-label={`${label} 취소`}
         className="min-h-9 rounded-md border border-gray-300 bg-white px-2 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c]">취소</button>
     </div>
