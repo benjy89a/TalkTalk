@@ -136,6 +136,14 @@ node --test components/search/aiRequestGate.test.mjs
 - 관리자 `AiKeyStatus`는 키가 없을 때 넣어야 할 환경변수 **이름**(`EXAONE_API_KEY`/`GEMINI_API_KEY`)과 `AI_PROVIDER` 사용법을 보여 주고, 연결 테스트 확인창에 실제 업체 이름을 쓴다.
 - `aiStatusClient.ts`: `fetchAiProviderInfo`(이름만), `aiTargetText`(문구), `fetchAiStatus`가 `providerId`·`keyEnvName`을 선택적으로 받는다(이전 응답 모양과 호환).
 
+## 관리자 AI 업체 선택 (`AiProviderSelect`)
+
+관리자 "AI 설정" 탭(`AiKeyStatus` 안)에서 `환경변수 따르기 / EXAONE / Gemini`와 Gemini 모델을 고른다. 저장하는 것은 업체·모델뿐이며 API 키는 서버 환경변수에만 있다(자세한 규칙은 `app/api/ai/README.md`의 "관리자 화면에서 AI 업체 선택").
+
+- `AiProviderSelect.tsx` — 라디오·모델 입력·저장·확인창. **키가 없는 업체는 선택할 수 없고**, 바꾼 내용이 없거나 모델 형식이 틀리면 저장 버튼이 꺼진다. 설정 테이블(007)이 없으면 안내만 보여 준다.
+- `aiSettingsClient.ts` — 저장 요청(`PUT /api/ai/status`, 업체·모델만 전송)과 순수 도우미(`isValidModelInput`·`isSelectionChanged`·`selectionSourceText`). 서버의 한국어 안내(키 없음 409·007 미적용 503·권한 403)를 그대로 보여 준다.
+- `aiStatusClient.ts` — `fetchAiStatus`가 선택 상태(`selection`)와 업체별 키 설정 여부(`providers`)를 선택적으로 받는다(이전 응답 모양과 호환).
+- 저장 뒤 `AiKeyStatus`가 상태를 다시 불러온다. 이미 열려 있는 다른 화면의 `✨ AI 도구 (모델명)` 버튼은 새로고침하면 바뀐다.
 
 ## 팀장 변경 기록 (재문님 참고용 — 따로 할 일 없음)
 
