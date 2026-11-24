@@ -3,7 +3,7 @@
 // 알림 (D) — 멘션 알림 카드(토스트) · 윈도우 알림 · 탭 제목 숫자
 //
 // 누가 나를 @멘션하면:
-//   - TalkTalk 탭을 보고 있을 때 → 화면 오른쪽 위에 알림 카드가 6초 동안 떴다가 사라진다
+//   - TalkTalk 탭을 보고 있을 때 → 화면 오른쪽 위에 알림 카드가 10초 동안 떴다가 사라진다
 //     (지금 보고 있는 채널의 멘션은 이미 눈앞에 있으므로 띄우지 않는다)
 //   - 다른 탭·다른 프로그램을 보고 있을 때 → 윈도우 알림 (허락한 경우. 아니면 돌아왔을 때 카드로)
 //   - 카드나 윈도우 알림을 누르면 jumpToMessage 로 그 메시지까지 이동 + 강조
@@ -127,7 +127,7 @@ export default function NotificationToasts() {
           const next = [...list, { key, channelId: d.channelId, messageId: d.messageId, title, body }];
           return next.slice(-MAX_TOASTS);
         });
-        // 6초 뒤 사라짐. 단 탭이 숨겨져 있으면 돌아와서 볼 수 있게 기다린다
+        // 10초 뒤 사라짐. 단 탭이 숨겨져 있으면 돌아와서 볼 수 있게 기다린다
         const schedule = () => {
           timers.current.set(
             key,

@@ -12,6 +12,7 @@ import {
   applyInsert,
   applyRead,
   applyUpdate,
+  findMissedMentions,
   MAX_MENTIONS,
   type ChannelReadState,
 } from "./unreadRules";
@@ -108,7 +109,41 @@ export async function refreshUnread() {
   );
 
   if (seq !== refreshSeq) return;
-  setState({ myId: uid, myName, channels: Object.fromEntries(rows) });
+  // 같은 사람이 다시 읽은 경우에만 "놓친 멘션"을 찾는다 (처음 로그인 때의 예전 멘션은 배지로만)
+  const prevChannels = state.myId === uid ? state.channels : null;
+  const nextChannels = Object.fromEntries(rows);
+  setState({ myId: uid, myName, channels: nextChannels });
+
+  const missed = findMissedMentions(prevChannels, nextChannels, notifiedIds);
+  if (missed.length > 0) void notifyMissed(missed.map((m) => m.messageId));
+}
+
+// ---- 놓친 멘션 알림 ----
+// 화면이 숨겨져 있거나 연결이 잠시 끊긴 동안 온 멘션은 실시간 신호로 못 받는다.
+// 돌아와서 DB 를 다시 읽을 때 새로 찾은 멘션도 알림 카드로 보여 준다.
+const notifiedIds = new Set<number>(); // 이미 알림을 띄운 메시지 (같은 알림 두 번 방지)
+
+function emitMention(row: Pick<Message, "id" | "channel_id" | "user_id" | "content">) {
+  if (notifiedIds.has(row.id)) return;
+  notifiedIds.add(row.id);
+  window.dispatchEvent(
+    new CustomEvent<MentionEventDetail>(MENTION_EVENT, {
+      detail: { channelId: row.channel_id, messageId: row.id, authorId: row.user_id, content: row.content },
+    }),
+  );
+}
+
+async function notifyMissed(ids: number[]) {
+  const { data, error } = await createClient()
+    .from("messages")
+    .select("id, channel_id, user_id, content")
+    .in("id", ids)
+    .order("id");
+  if (error) {
+    console.error("[unread] 놓친 멘션 불러오기 실패:", error.message);
+    return;
+  }
+  (data ?? []).forEach(emitMention);
 }
 
 // 삭제되지 않은 가장 최근 본문 메시지 id
@@ -141,13 +176,7 @@ function onNewMessage(row: Message) {
   const mentioned = mentionsMe(row);
 
   // 나를 멘션한 새 메시지 → 알림(NotificationToasts)에 신호 (방금 참여한 채널이어도 알림은 보낸다)
-  if (mentioned) {
-    window.dispatchEvent(
-      new CustomEvent<MentionEventDetail>(MENTION_EVENT, {
-        detail: { channelId: row.channel_id, messageId: row.id, authorId: row.user_id, content: row.content },
-      }),
-    );
-  }
+  if (mentioned) emitMention(row);
 
   // 모르는 채널(방금 참여한 채널 등)이면 DB 에서 다시 읽어 온다
   if (!state.channels[row.channel_id]) {
@@ -209,17 +238,29 @@ function start() {
     }
   });
 
-  // 탭으로 돌아오면 다시 읽기 (끊겨 있는 동안 놓친 메시지 보충)
-  const onVisible = () => {
-    if (document.visibilityState === "visible") void refreshUnread();
+  // 실시간 신호를 놓쳤을 때를 위한 안전장치 — DB 에서 다시 읽기 (놓친 멘션은 알림 카드로 보여 줌)
+  //  - 탭으로 돌아올 때 (다른 탭에 있다 돌아옴)
+  //  - 창으로 돌아올 때 (창을 나란히 두고 다른 프로그램을 쓰다 돌아옴 — 탭 전환이 아니라서 위 신호가 안 옴)
+  //  - 화면을 보고 있는 동안 1분마다
+  // 너무 자주 읽지 않도록 5초 안에 다시 부르면 건너뛴다
+  let lastRefresh = 0;
+  const refreshSoon = () => {
+    if (document.visibilityState !== "visible") return;
+    if (Date.now() - lastRefresh < 5000) return;
+    lastRefresh = Date.now();
+    void refreshUnread();
   };
-  document.addEventListener("visibilitychange", onVisible);
+  document.addEventListener("visibilitychange", refreshSoon);
+  window.addEventListener("focus", refreshSoon);
+  const interval = setInterval(refreshSoon, 60_000);
   window.addEventListener(READ_EVENT, onRead);
 
   return () => {
     void supabase.removeChannel(channel);
     auth.subscription.unsubscribe();
-    document.removeEventListener("visibilitychange", onVisible);
+    document.removeEventListener("visibilitychange", refreshSoon);
+    window.removeEventListener("focus", refreshSoon);
+    clearInterval(interval);
     window.removeEventListener(READ_EVENT, onRead);
   };
 }

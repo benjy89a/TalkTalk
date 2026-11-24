@@ -54,3 +54,20 @@ test("읽음 처리: 그 앞의 멘션은 사라짐", () => {
   assert.deepEqual(s.mentionIds, [15]);
   assert.equal(applyRead(s, 11), s); // 뒤로 가지 않음
 });
+
+test("놓친 멘션: 다시 읽었을 때 새로 생긴 것만, 처음 로그인 때는 없음", async () => {
+  const { findMissedMentions } = await import("./unreadRules.ts");
+  const prev = { a: { lastReadId: 10, latestId: 12, mentionIds: [11] } };
+  const next = {
+    a: { lastReadId: 10, latestId: 15, mentionIds: [11, 13, 15] },
+    b: { lastReadId: 0, latestId: 20, mentionIds: [20] }, // 새로 참여한 채널
+  };
+  assert.deepEqual(findMissedMentions(null, next, new Set()), []); // 처음 로그인
+  assert.deepEqual(findMissedMentions(prev, next, new Set()), [
+    { channelId: "b", messageId: 20 },
+    { channelId: "a", messageId: 15 },
+    { channelId: "a", messageId: 13 },
+  ]);
+  assert.deepEqual(findMissedMentions(prev, next, new Set([15, 20])), [{ channelId: "a", messageId: 13 }]); // 이미 알림 띄운 건 제외
+  assert.equal(findMissedMentions(prev, next, new Set(), 1).length, 1); // 최대 개수
+});
