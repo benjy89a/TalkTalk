@@ -7,6 +7,7 @@ import AiExtraTools from "./AiExtraTools";
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 import { useCancelOnSignOut } from "./useCancelOnSignOut";
+import { aiPrimaryButton, aiTriggerButton } from "./aiButtonStyles";
 
 type Props = { channelId: string | null };
 /** 결과의 메시지를 눌렀을 때 호출된다 (CONTRACTS.md 3번 "메시지로 이동 규격"). 없으면 결과는 눌러지지 않는다. */
@@ -33,7 +34,7 @@ function ChannelAiTools({ channelId, onSelectMessage }: Props & JumpProps) {
     <div className="relative" onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); } }}>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
-          className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">
+          className={aiTriggerButton(open)}>
           ✨ AI 도구 {open ? "▾" : "▴"}{active ? " · 실행 중" : ""}
         </button>
         {active && <AiRequestProgress request={active} onCancel={() => gate.cancel()} background={!open} />}
@@ -106,7 +107,8 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
 
   return (
     <section aria-label="AI 대화 요약" className="space-y-2 text-sm text-gray-900">
-      <div className="flex flex-wrap items-center gap-2">
+      <h3 className="font-semibold">대화 요약</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex items-center gap-2 text-gray-600">
           요약 범위
           <select
@@ -116,7 +118,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
               cancel();
               setLimit(Number(event.target.value));
             }}
-            className="h-9 rounded-md border border-gray-300 bg-white px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]"
+            className="h-9 rounded-md border border-gray-300 bg-white px-2 text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]"
           >
             {[10, 25, 50].map((count) => <option key={count} value={count}>최근 {count}개</option>)}
           </select>
@@ -125,7 +127,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
           type="button"
           onClick={summarize}
           disabled={!channelId || busy}
-          className="inline-flex min-h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:pointer-events-none disabled:opacity-50"
+          className={aiPrimaryButton}
         >
           {state.status === "loading" ? "요약 준비 중…" : "대화 요약"}
         </button>
@@ -145,7 +147,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
       )}
       {state.status === "success" && (
         <div role="status" className="max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-4">
-          <h3 className="font-semibold">대화 요약</h3>
+          <h3 className="font-semibold">요약 결과</h3>
           <p className="mt-2 whitespace-pre-wrap break-words leading-6">{state.summary}</p>
           <p className="mt-2 text-xs text-gray-600">AI 결과는 틀릴 수 있습니다. 원문 대화를 함께 확인해 주세요.</p>
         </div>

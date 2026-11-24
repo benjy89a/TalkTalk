@@ -8,6 +8,7 @@ import { AiExtraRequestError, requestExtractTasks, requestNaturalSearch, type Ai
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 import { canRetryAfterTruncation, DEFAULT_TASK_LIMIT, TASK_LIMIT_OPTIONS } from "./taskLimits";
+import { aiPrimaryButton, aiSecondaryButton } from "./aiButtonStyles";
 
 type Props = {
   channelId: string | null;
@@ -79,37 +80,40 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void run("search"); }
 
   return (
-    <section aria-label="AI 자연어 검색과 할 일 추출" className="space-y-3 border-t border-gray-200 pt-3 text-sm text-gray-900">
-      <h3 className="font-semibold">현재 채널 AI 도구</h3>
-      <p className="text-xs leading-5 text-gray-600">
-        질문 또는 선택 범위의 대화가 외부 EXAONE으로 전송됩니다. 허용된 데이터에만 사용해 주세요.
-        {!channelId && " 먼저 채널을 선택해 주세요."}
-      </p>
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-        <label htmlFor={inputId} className="min-w-0 flex-1 space-y-1">
-          <span className="block text-gray-600">자연어 검색</span>
+    <section aria-label="AI 자연어 검색과 할 일 추출" className="space-y-4 border-t border-gray-200 pt-3 text-sm text-gray-900">
+      <div className="space-y-2">
+        <h3 className="font-semibold">자연어 검색</h3>
+        <form onSubmit={submit} className="flex items-center gap-2">
+          <label htmlFor={inputId} className="sr-only">자연어 검색 질문</label>
           <input id={inputId} value={query} maxLength={500} disabled={!channelId || busy}
             onChange={(event) => { cancel(); setQuery(event.target.value); }}
             onKeyDown={(event) => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}
             placeholder="예: 지난주 배포 얘기 찾아줘"
-            className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50" />
-        </label>
-        <button type="submit" disabled={!channelId || !query.trim() || busy}
-          className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-2 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50">AI 검색</button>
-      </form>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-gray-600">할 일 추출 범위
-          <select value={limit} disabled={busy} onChange={(event) => { cancel(); setLimit(Number(event.target.value)); }}
-            className="h-9 rounded-md border border-gray-300 bg-white px-2 focus-visible:ring-2 focus-visible:ring-[#1e325c]">
-            {TASK_LIMIT_OPTIONS.map((count) => <option key={count} value={count}>최근 {count}개</option>)}
-          </select>
-        </label>
-        <p className="basis-full text-xs leading-5 text-gray-600">대화가 길면 AI 응답이 중간에 끝날 수 있어 10개 이하를 권장합니다.</p>
-        <button type="button" disabled={!channelId || busy} onClick={() => void run("tasks")}
-          className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-2 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50">할 일 추출</button>
-        {(state.status === "search" || state.status === "tasks" || state.status === "error") && (
-          <button type="button" onClick={cancel} className="rounded-md px-3 py-2 text-gray-600 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#1e325c]">결과 지우기</button>
-        )}
+            className="h-9 min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50" />
+          <button type="submit" disabled={!channelId || !query.trim() || busy} className={aiPrimaryButton}>AI 검색</button>
+        </form>
+        <p className="text-xs leading-5 text-gray-600">
+          질문이 외부 EXAONE으로 전송됩니다. 허용된 데이터에만 사용해 주세요.
+          {!channelId && " 먼저 채널을 선택해 주세요."}
+        </p>
+      </div>
+      <div className="space-y-2 border-t border-gray-200 pt-3">
+        <h3 className="font-semibold">할 일 추출</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="flex items-center gap-2 text-gray-600">추출 범위
+            <select value={limit} disabled={busy} onChange={(event) => { cancel(); setLimit(Number(event.target.value)); }}
+              className="h-9 rounded-md border border-gray-300 bg-white px-2 text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">
+              {TASK_LIMIT_OPTIONS.map((count) => <option key={count} value={count}>최근 {count}개</option>)}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            {(state.status === "search" || state.status === "tasks" || state.status === "error") && (
+              <button type="button" onClick={cancel} className={aiSecondaryButton}>결과 지우기</button>
+            )}
+            <button type="button" disabled={!channelId || busy} onClick={() => void run("tasks")} className={aiPrimaryButton}>할 일 추출</button>
+          </div>
+        </div>
+        <p className="text-xs leading-5 text-gray-600">선택한 범위의 대화가 외부 EXAONE으로 전송됩니다. 대화가 길면 AI 응답이 중간에 끝날 수 있어 10개 이하를 권장합니다.</p>
         {!requestGate && active && <AiRequestProgress request={active} onCancel={cancel} />}
       </div>
       {state.status === "loading" && <p role="status" className="text-gray-600">{state.kind === "search" ? "질문을 해석하고 현재 채널에서 검색하고 있습니다." : "대화에서 할 일과 원문 근거를 확인하고 있습니다."} AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
@@ -121,7 +125,7 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
           {canRetryAfterTruncation(state) && <>
             <p className="text-xs text-gray-600">결과는 매번 달라서 다시 시도하면 될 수 있습니다.</p>
             <button type="button" disabled={busy} onClick={() => void run("tasks")}
-              className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-1 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50">
+              className={aiSecondaryButton}>
               다시 시도 (AI를 다시 호출합니다)</button>
           </>}
         </div>;
