@@ -20,6 +20,7 @@
 //
 // 채널 이름 옆 "(13명)": 그 채널의 전체 멤버 수. 내가 멤버인 채널의 멤버 줄은 RLS 상 읽을 수 있어서
 // 한 번에 가져와 센다. 목록을 다시 불러올 때(refreshKey) 함께 새로 센다.
+// 누가 들어오거나 나가면 실시간(channel_members)으로 알아채고 바로 다시 센다. 내가 초대된 새 채널도 바로 나타난다.
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Channel } from "@/types/database";
@@ -47,6 +48,57 @@ export default function ChannelList({
   const [channels, setChannels] = useState<ChannelItem[] | null>(null);
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
+  // 실시간으로 멤버 변화(들어옴·나감)가 오면 1씩 올려서 목록·인원수를 다시 불러온다
+  const [liveTick, setLiveTick] = useState(0);
+  const [me, setMe] = useState<string | null>(null);
+
+  // 지금 내 채널 id 들 (구독 필터용). 순서가 바뀌어도 같은 값이 되게 정렬해서 묶는다
+  const channelIdsKey = (channels ?? [])
+    .map((c) => c.id)
+    .sort()
+    .join(",");
+
+  // channel_members 실시간 (006_realtime_channel_members.sql 의 안내대로)
+  // - INSERT: 필터를 걸어 듣는다 → 내 채널마다 channel_id=eq.{id} (누가 들어옴),
+  //           그리고 user_id=eq.{나} (내가 새 채널에 초대됨 → 목록에 바로 나타남)
+  // - DELETE: 삭제 이벤트엔 필터가 안 걸려 모든 채널 것이 온다 → 받은 channel_id 가 내 목록에 있을 때만 다시 센다
+  // - 읽음 위치(UPDATE)는 인원수와 상관없어서 듣지 않는다
+  // - 짧은 시간에 여러 번 와도 한 번만 다시 부르도록 잠깐 모아서 처리한다
+  useEffect(() => {
+    if (!me) return;
+    const supabase = createClient();
+    const myChannelIds = new Set(channelIdsKey ? channelIdsKey.split(",") : []);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setLiveTick((t) => t + 1), 400);
+    };
+
+    let channel = supabase
+      .channel(`channel-list-members:${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "channel_members", filter: `user_id=eq.${me}` },
+        bump,
+      )
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "channel_members" }, (p) => {
+        const old = p.old as { channel_id?: string; user_id?: string };
+        if ((old.channel_id && myChannelIds.has(old.channel_id)) || old.user_id === me) bump();
+      });
+    for (const id of myChannelIds) {
+      channel = channel.on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "channel_members", filter: `channel_id=eq.${id}` },
+        bump,
+      );
+    }
+    channel.subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [me, channelIdsKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +114,7 @@ export default function ChannelList({
           if (!cancelled) setChannels([]);
           return;
         }
+        if (!cancelled) setMe(session.user.id);
 
         // channel_members(내 멤버십) → channels(채널 정보) 를 한 번에 가져온다
         const { data, error } = await supabase
@@ -104,7 +157,7 @@ export default function ChannelList({
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, liveTick]);
 
   if (channels === null) {
     return (
