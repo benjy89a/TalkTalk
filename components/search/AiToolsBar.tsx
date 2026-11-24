@@ -7,7 +7,9 @@ import AiExtraTools from "./AiExtraTools";
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 import { useCancelOnSignOut } from "./useCancelOnSignOut";
-import { aiPrimaryButton, aiTriggerButton } from "./aiButtonStyles";
+import { aiPrimaryButton, aiSecondaryButton, aiTriggerButton } from "./aiButtonStyles";
+import { aiWaitHint } from "./aiStatusClient";
+import { TRUNCATED_CODE } from "./taskLimits";
 import { aiTargetText, useAiProviderInfo, useAiProviderLabel } from "./useAiProviderLabel";
 
 type Props = { channelId: string | null };
@@ -68,6 +70,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
   const requestRef = useRef<AiRequest | null>(null);
   const busy = useAiRequest(gate) !== null;
   const target = aiTargetText(useAiProviderLabel()); // 실제 업체 이름(EXAONE · Gemini)
+  const hint = aiWaitHint(useAiProviderInfo()?.providerId); // 업체별 대기 안내(EXAONE 은 기존 "최대 4분")
 
   useEffect(() => () => {
     if (requestRef.current) gate.cancel(requestRef.current);
@@ -119,10 +122,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
           <select
             value={limit}
             disabled={busy}
-            onChange={(event) => {
-              cancel();
-              setLimit(Number(event.target.value));
-            }}
+            onChange={(event) => setLimit(Number(event.target.value))}
             className="h-9 rounded-md border border-gray-300 bg-white px-2 text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]"
           >
             {[10, 25, 50].map((count) => <option key={count} value={count}>최근 {count}개</option>)}
@@ -134,21 +134,30 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
           disabled={!channelId || busy}
           className={aiPrimaryButton}
         >
-          {state.status === "loading" ? "요약 준비 중…" : "대화 요약"}
+          {state.status === "loading" ? "요약 중…" : "대화 요약"}
         </button>
       </div>
       <p className="text-xs leading-5 text-gray-600">
         선택한 범위의 대화와 작성자 이름이 {target}로 전송됩니다. 허용된 대화에만 사용해 주세요. 서버 설정과 API 한도에 따라 이용이 제한될 수 있습니다.
         {!channelId && " 먼저 채널을 선택해 주세요."}
       </p>
-      {state.status === "loading" && <p role="status" className="text-gray-600">로그인·채널 권한을 확인하고 대화를 요약하고 있습니다. AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
+      {state.status === "loading" && <p role="status" className="text-gray-600">로그인·채널 권한을 확인하고 대화를 요약하고 있습니다. {hint.detail}</p>}
       {state.status === "error" && (
-        <p
+        <div
           role={state.code === "AI_NOT_CONNECTED" ? "status" : "alert"}
-          className="rounded-md border border-gray-200 bg-gray-50 p-3 leading-6"
+          className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3 leading-6"
         >
-          {state.message}
-        </p>
+          <p>{state.message}</p>
+          {/* 응답이 중간에 끝나면 AI가 생각에 쓰는 양이 매번 달라서 다시 시도하면 될 수 있다. 자동 재시도는 없고 누를 때만 호출한다. */}
+          {state.code === TRUNCATED_CODE && (
+            <>
+              <p className="text-xs text-gray-600">결과는 매번 달라서 다시 시도하면 될 수 있습니다.</p>
+              <button type="button" disabled={busy} onClick={summarize} className={aiSecondaryButton}>
+                다시 시도 (AI를 다시 호출합니다)
+              </button>
+            </>
+          )}
+        </div>
       )}
       {state.status === "success" && (
         <div role="status" className="max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-4">
