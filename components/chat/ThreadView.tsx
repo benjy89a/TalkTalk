@@ -123,7 +123,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
 
       {status === "ready" && root && (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:p-3">
             <div ref={contentRef}>
               {/* 원본 메시지 */}
               <MessageItem
