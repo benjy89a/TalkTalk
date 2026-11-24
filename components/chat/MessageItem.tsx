@@ -300,7 +300,7 @@ export default function MessageItem({
         data-thread-trigger
         className="shrink-0 rounded px-1 hover:text-[#1e325c]"
       >
-        답글
+        스레드
       </button>
     ) : null;
   // 답글이 있을 때: 말풍선 아래 "답글 n개 · 마지막 답글 시간"
@@ -312,7 +312,7 @@ export default function MessageItem({
         data-thread-trigger
         className="mt-0.5 text-xs leading-5 font-medium text-blue-700 hover:underline"
       >
-        답글 {thread.count}개 · {formatTime(thread.lastAt)}
+        댓글 {thread.count}개 · {formatTime(thread.lastAt)}
       </button>
     ) : null;
   // 이모지 반응: 마우스를 올리면 보이는 😊+ 버튼과 고르는 창 (저장된 메시지에만)
@@ -410,7 +410,7 @@ export default function MessageItem({
       >
         <span>
           삭제하면 &lsquo;삭제된 메시지입니다&rsquo;로 바뀌고 되돌릴 수 없어요.
-          {replyCount > 0 && ` 답글 ${replyCount}개는 그대로 남아요.`}
+          {replyCount > 0 && ` 댓글 ${replyCount}개는 그대로 남아요.`}
         </span>
         <span className="flex gap-1">
           <button
@@ -447,7 +447,7 @@ export default function MessageItem({
   const canTap = !status && !deleted && !editing && !confirming;
   type TapKey = "reply" | "react" | "quote" | "copy" | "edit" | "delete";
   const tapButtons: { key: TapKey; label: string }[] = [];
-  if (canTap && onOpenThread) tapButtons.push({ key: "reply", label: hasReplies ? `답글 ${thread.count}개` : "답글" });
+  if (canTap && onOpenThread) tapButtons.push({ key: "reply", label: hasReplies ? `스레드 · 댓글 ${thread.count}개` : "스레드" });
   if (canTap && canReact) tapButtons.push({ key: "react", label: "😊 반응" });
   if (canTap && onQuote) tapButtons.push({ key: "quote", label: "답장" });
   if (canTap) tapButtons.push({ key: "copy", label: "복사" });
