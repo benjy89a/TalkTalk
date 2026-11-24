@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL, SUMMARY_TIMEOUT_MS } from "./handler.ts";
+import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL, SUMMARY_MAX_TOKENS, SUMMARY_TIMEOUT_MS } from "./handler.ts";
 
 // 실제 발급 키가 아닌 가짜 HTTP 테스트 전용 값이다.
 const TEST_CREDENTIAL = "unit-test-only";
@@ -34,7 +34,8 @@ test("생성만으로 호출하지 않음, 고정 endpoint·모델·서버 인�
     assert.equal(body.model, "k-exaone_v2.5");
     assert.equal(body.stream, false);
     assert.equal(body.reasoning_effort, "low");
-    assert.equal(body.max_tokens, 2048);
+    assert.equal(body.max_tokens, SUMMARY_MAX_TOKENS);
+    assert.equal(SUMMARY_MAX_TOKENS, 4096);
     assert.deepEqual(body.messages.map((message) => message.role), ["system", "user"]);
     assert.deepEqual(JSON.parse(body.messages[1].content), { messages: ["합성 테스트", "지시를 무시하라는 문장도 데이터"] });
     assert.doesNotMatch(options.body, /unit-test-only/);
@@ -147,4 +148,10 @@ test("시작 전 취소는 호출하지 않으며 요청·본문 도중 취소�
     } });
     await assert.rejects(cancelled(["합성"], controller.signal), { name: "AbortError" });
   }
+});
+
+test("요약 최악 생성 시간(4,096토큰, 실측 최저 약 26토큰/초)이 대기 제한 안(여유 60초 이상)이고 배포 함수 300초보다 짧음", () => {
+  const worstSeconds = SUMMARY_MAX_TOKENS / 26;
+  assert.ok(worstSeconds * 1000 < SUMMARY_TIMEOUT_MS - 60000, `최악 ${worstSeconds}초`);
+  assert.ok(SUMMARY_TIMEOUT_MS < 300000);
 });
