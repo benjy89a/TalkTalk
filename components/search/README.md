@@ -136,3 +136,9 @@ node --test components/search/aiRequestGate.test.mjs
 - 관리자 `AiKeyStatus`는 키가 없을 때 넣어야 할 환경변수 **이름**(`EXAONE_API_KEY`/`GEMINI_API_KEY`)과 `AI_PROVIDER` 사용법을 보여 주고, 연결 테스트 확인창에 실제 업체 이름을 쓴다.
 - `aiStatusClient.ts`: `fetchAiProviderInfo`(이름만), `aiTargetText`(문구), `fetchAiStatus`가 `providerId`·`keyEnvName`을 선택적으로 받는다(이전 응답 모양과 호환).
 
+
+## 팀장 변경 기록 (재문님 참고용 — 따로 할 일 없음)
+
+- **11/24 · 윤석(팀장)**: 검색 결과·AI 자연어 검색 결과에 붙는 `" · 스레드 답글"` → `" · 스레드 댓글"` 로 글자만 바꿈 (`MessageSearch.tsx`, `AiExtraTools.tsx`).
+  - 이유: 카톡식 "답장"(인용)과 스레드 "답글"이 헷갈린다는 의견 → 팀 전체 용어를 **버튼 "스레드" / 개수·글 "댓글" / 인용 "답장"** 으로 통일 (B 쪽은 PR #100 에서 반영).
+  - 앞으로 화면 문구에 스레드 답글을 쓸 때는 **"댓글"** 로 맞춰 주세요. 코드 이름(`parent_id`, reply 등)은 그대로.
