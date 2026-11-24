@@ -55,8 +55,8 @@ export default function MessageItem({
   onReact,
 }: Props) {
   // 말풍선 최대 폭: 채널 본문은 75%(카톡처럼), 좁은 스레드 패널은 92%
-  // 휴대폰처럼 좁은 화면(sm 미만)에서는 채널 본문도 85%까지
-  const maxW = wide ? "max-w-[92%]" : "max-w-[85%] sm:max-w-[75%]";
+  // 휴대폰처럼 좁은 화면(sm 미만)에서는 카톡처럼 말풍선이 화면 끝까지 (반대쪽엔 시간 글자 자리만 남음)
+  const maxW = wide ? "max-w-full sm:max-w-[92%]" : "max-w-full sm:max-w-[75%]";
   const name = message.profiles?.name || "알 수 없음";
   const { status } = message;
   const [editing, setEditing] = useState(false);

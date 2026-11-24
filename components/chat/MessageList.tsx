@@ -162,7 +162,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
       {messages.length === 0 ? (
         <CenterText>아직 메시지가 없어요. 첫 메시지를 보내보세요!</CenterText>
       ) : (
-        <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-2 py-4 sm:p-4">
           <div ref={contentRef}>
             {/* (B-6) 맨 위: 불러오는 중 / 더 없으면 채널 시작 안내 */}
             <div className="py-2 text-center text-xs leading-5 text-gray-500">
