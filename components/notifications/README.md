@@ -68,6 +68,8 @@ import UnreadBadge from "@/components/notifications/UnreadBadge";
 - `useUnread()` 의 `mentionCount(channelId)` 로 숫자만 받을 수도 있습니다.
 - `useUnread` / `UnreadBadge` 를 여러 군데 써도 DB 요청·Realtime 구독은 한 번만 합니다 (`unreadStore.ts`).
 - 스레드 답글 속 멘션은 세지 않습니다 (읽음 처리가 채널 본문 기준이라서).
+- **수정·삭제도 바로 반영**합니다 (Realtime UPDATE). 안 읽은 메시지에 "@내이름" 이 수정으로 들어가면 +1, 빠지면 -1.
+  이미 읽은 메시지는 수정돼도 다시 "안 읽음"이 되지 않습니다. 안 읽은 최근 메시지가 삭제되면 굵게도 풀립니다.
 
 ### 2) @ 자동완성 — B 의 `MessageInput` 에 연결 (B 담당 파일 수정 필요)
 
@@ -91,5 +93,5 @@ return (
 ### 테스트
 
 ```bash
-node --test components/notifications/mentions.test.mjs
+node --test components/notifications/mentions.test.mjs components/notifications/unreadRules.test.mjs
 ```
