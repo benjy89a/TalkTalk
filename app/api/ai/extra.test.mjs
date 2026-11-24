@@ -125,7 +125,8 @@ test("입력 스키마·질문 길이·limit 범위·혼합 필드 검사", asyn
     [handleNaturalSearch, { query: "배포", messages: ["혼합"] }, "INVALID_INPUT"],
     [handleExtractTasks, {}, "INVALID_CHANNEL"],
     [handleExtractTasks, { channelId: "invalid" }, "INVALID_CHANNEL"],
-    [handleExtractTasks, { channelId, limit: 101 }, "INVALID_LIMIT"],
+    [handleExtractTasks, { channelId, limit: 26 }, "INVALID_LIMIT"],
+    [handleExtractTasks, { channelId, limit: 0 }, "INVALID_LIMIT"],
     [handleExtractTasks, { channelId, limit: 1.5 }, "INVALID_LIMIT"],
     [handleExtractTasks, { channelId, limit: null }, "INVALID_LIMIT"],
     [handleExtractTasks, { channelId, messages: ["혼합"] }, "INVALID_INPUT"],
@@ -298,11 +299,11 @@ test("할 일: 빈 대화·너무 긴 대화는 추출 함수 호출 전에 안�
   }
 });
 
-test("할 일: 기본 조회 50개 및 DB·추출 함수 오류 일반화", async () => {
+test("할 일: 기본 조회 10개(최대 25개) 및 DB·추출 함수 오류 일반화", async () => {
   const { createClient, calls } = mockClient({ dbError: { message: "private DB detail" } });
   const body = await expectError(await handleExtractTasks(request({ channelId }), createClient), 500, "DATABASE_ERROR");
   assert.doesNotMatch(JSON.stringify(body), /private DB detail/);
-  assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 50));
+  assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 10));
   const good = mockClient();
   const generic = await expectError(await handleExtractTasks(request({ channelId }), good.createClient, async () => { throw new Error("private model detail"); }), 500, "INTERNAL_ERROR");
   assert.doesNotMatch(JSON.stringify(generic), /private model detail/);

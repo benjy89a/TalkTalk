@@ -7,6 +7,7 @@ import { useCancelOnSignOut } from "./useCancelOnSignOut";
 import { AiExtraRequestError, requestExtractTasks, requestNaturalSearch, type AiSearchResult, type AiTaskResult } from "./extraClient";
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
+import { canRetryAfterTruncation, DEFAULT_TASK_LIMIT, TASK_LIMIT_OPTIONS } from "./taskLimits";
 
 type Props = {
   channelId: string | null;
@@ -17,7 +18,7 @@ type Props = {
 type Kind = "search" | "tasks";
 type State = { status: "idle" } | { status: "loading"; kind: Kind }
   | { status: "search"; result: AiSearchResult } | { status: "tasks"; result: AiTaskResult }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; code?: string; kind: Kind };
 
 export default function AiExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
   return <ChannelExtraTools key={channelId ?? "no-channel"} channelId={channelId} requestGate={requestGate} onSelectMessage={onSelectMessage} />;
@@ -25,7 +26,7 @@ export default function AiExtraTools({ channelId, requestGate, onSelectMessage }
 
 function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
   const [query, setQuery] = useState("");
-  const [limit, setLimit] = useState(25);
+  const [limit, setLimit] = useState<number>(DEFAULT_TASK_LIMIT);
   const [state, setState] = useState<State>({ status: "idle" });
   const [localGate] = useState(createAiRequestGate);
   const gate = requestGate ?? localGate;
@@ -65,8 +66,9 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
       if (!controller.signal.aborted && requestRef.current === request) setState(next);
     } catch (error) {
       if (!controller.signal.aborted && requestRef.current === request) {
-        setState({ status: "error", message: error instanceof AiExtraRequestError
-          ? error.message : "연결 상태를 확인하고 다시 시도해 주세요." });
+        setState({ status: "error", kind, code: error instanceof AiExtraRequestError ? error.code : undefined,
+          message: error instanceof AiExtraRequestError
+            ? error.message : "연결 상태를 확인하고 다시 시도해 주세요." });
       }
     } finally {
       if (requestRef.current === request) requestRef.current = null;
@@ -99,9 +101,10 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
         <label className="flex items-center gap-2 text-gray-600">할 일 추출 범위
           <select value={limit} disabled={busy} onChange={(event) => { cancel(); setLimit(Number(event.target.value)); }}
             className="h-9 rounded-md border border-gray-300 bg-white px-2 focus-visible:ring-2 focus-visible:ring-[#1e325c]">
-            {[10, 25, 50].map((count) => <option key={count} value={count}>최근 {count}개</option>)}
+            {TASK_LIMIT_OPTIONS.map((count) => <option key={count} value={count}>최근 {count}개</option>)}
           </select>
         </label>
+        <p className="basis-full text-xs leading-5 text-gray-600">대화가 길면 AI 응답이 중간에 끝날 수 있어 10개 이하를 권장합니다.</p>
         <button type="button" disabled={!channelId || busy} onClick={() => void run("tasks")}
           className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-2 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50">할 일 추출</button>
         {(state.status === "search" || state.status === "tasks" || state.status === "error") && (
@@ -110,7 +113,19 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
         {!requestGate && active && <AiRequestProgress request={active} onCancel={cancel} />}
       </div>
       {state.status === "loading" && <p role="status" className="text-gray-600">{state.kind === "search" ? "질문을 해석하고 현재 채널에서 검색하고 있습니다." : "대화에서 할 일과 원문 근거를 확인하고 있습니다."} AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
-      {state.status === "error" && <p role="alert" className="rounded-md border border-gray-200 bg-gray-50 p-3 leading-6">{state.message}</p>}
+      {state.status === "error" && (() => {
+        // 응답이 중간에 끝난 할 일 추출은 AI가 생각에 쓰는 양이 매번 달라서 다시 시도하면 될 수 있다.
+        // 자동 재시도는 하지 않고, 누를 때만 같은 범위로 다시 호출한다.
+        return <div role="alert" className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3 leading-6">
+          <p>{state.message}</p>
+          {canRetryAfterTruncation(state) && <>
+            <p className="text-xs text-gray-600">결과는 매번 달라서 다시 시도하면 될 수 있습니다.</p>
+            <button type="button" disabled={busy} onClick={() => void run("tasks")}
+              className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-1 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:opacity-50">
+              다시 시도 (AI를 다시 호출합니다)</button>
+          </>}
+        </div>;
+      })()}
       {state.status === "search" && (
         <div className="space-y-2">
           <p role="status">검색 결과 {state.result.messages.length}건 · 최신순{state.result.hasMore && " · 최근 20건만 표시합니다."}</p>
