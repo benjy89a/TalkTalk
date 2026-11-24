@@ -113,3 +113,12 @@ function addId(ids: number[], id: number): number[] {
   if (ids.includes(id) || ids.length >= MAX_MENTIONS) return ids;
   return [...ids, id].sort((a, b) => a - b);
 }
+
+/** DB 에서 다시 읽었을 때 새로 생긴 채널 (놓친 초대). prev 가 null 이면(처음 로그인) 빈 목록 */
+export function findNewChannels(
+  prev: Record<string, ChannelReadState> | null,
+  next: Record<string, ChannelReadState>,
+): string[] {
+  if (!prev) return [];
+  return Object.keys(next).filter((id) => !(id in prev));
+}

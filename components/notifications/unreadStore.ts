@@ -7,12 +7,19 @@ import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
 import { markAsRead, READ_EVENT, type ReadEventDetail } from "./markAsRead";
 import { escapeLike, mentionsName } from "./mentions";
-import { MENTION_EVENT, type MentionEventDetail } from "./notifyRules";
+import {
+  INVITE_EVENT,
+  inviteNotice,
+  MENTION_EVENT,
+  type InviteEventDetail,
+  type MentionEventDetail,
+} from "./notifyRules";
 import {
   applyInsert,
   applyRead,
   applyUpdate,
   findMissedMentions,
+  findNewChannels,
   MAX_MENTIONS,
   type ChannelReadState,
 } from "./unreadRules";
@@ -116,6 +123,60 @@ export async function refreshUnread() {
 
   const missed = findMissedMentions(prevChannels, nextChannels, notifiedIds);
   if (missed.length > 0) void notifyMissed(missed.map((m) => m.messageId));
+
+  // 놓친 초대 (화면이 숨겨져 실시간 신호를 못 받은 사이 새로 생긴 채널)
+  for (const channelId of findNewChannels(prevChannels, nextChannels)) void notifyNewChannel(channelId);
+}
+
+// ---- 초대 알림 (비공개 채널 초대 · 새 DM) ----
+// channel_members 에 "내 줄"이 새로 생기면 = 내가 그 채널 멤버가 됨 (006 에서 Realtime 켜짐)
+const notifiedChannels = new Set<string>(); // 이미 알린 채널 (실시간 + 다시 읽기 중복 방지)
+
+async function notifyNewChannel(channelId: string) {
+  const me = state.myId;
+  if (!me || notifiedChannels.has(channelId)) return;
+  notifiedChannels.add(channelId);
+
+  const supabase = createClient();
+  const { data: channel } = await supabase
+    .from("channels")
+    .select("name, type, created_by")
+    .eq("id", channelId)
+    .maybeSingle();
+  if (!channel) return;
+
+  // DM 이면 상대 이름
+  let partnerName: string | null = null;
+  if (channel.type === "dm") {
+    const { data: partner } = await supabase
+      .from("channel_members")
+      .select("profiles(name)")
+      .eq("channel_id", channelId)
+      .neq("user_id", me)
+      .limit(1)
+      .maybeSingle();
+    partnerName = partner?.profiles?.name ?? null;
+  }
+
+  const notice = inviteNotice({
+    type: channel.type,
+    createdBy: channel.created_by,
+    me,
+    channelName: channel.name,
+    partnerName,
+  });
+  if (!notice) return;
+  window.dispatchEvent(
+    new CustomEvent<InviteEventDetail>(INVITE_EVENT, { detail: { channelId, ...notice } }),
+  );
+}
+
+// channel_members INSERT (Realtime). 권한 규칙상 내 줄 + 내가 속한 채널의 줄이 오므로 내 줄만 본다
+function onMemberInserted(row: { channel_id: string; user_id: string }) {
+  if (!state.myId || row.user_id !== state.myId) return;
+  if (state.channels[row.channel_id]) return; // 이미 아는 채널
+  void notifyNewChannel(row.channel_id);
+  void refreshUnread(); // 새 채널의 미읽음·멘션도 바로 계산
 }
 
 // ---- 놓친 멘션 알림 ----
@@ -228,6 +289,9 @@ function start() {
     )
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) =>
       onMessageUpdated(payload.new as Message),
+    )
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "channel_members" }, (payload) =>
+      onMemberInserted(payload.new as { channel_id: string; user_id: string }),
     )
     .subscribe();
 

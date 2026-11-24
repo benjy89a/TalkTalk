@@ -36,3 +36,17 @@ test("어떤 알림을 띄울지", () => {
   // 탭 숨김 + 허락 안 함 → 돌아왔을 때 보이게 카드
   assert.deepEqual(chooseNotify({ messageChannelId: "b", activeChannelId: "a", pageVisible: false, desktopAllowed: false }), { toast: true, desktop: false });
 });
+
+test("초대 알림 문구", async () => {
+  const { inviteNotice } = await import("./notifyRules.ts");
+  const base = { me: "me", channelName: "인사팀", partnerName: "계섭" };
+  assert.deepEqual(inviteNotice({ ...base, type: "private", createdBy: "boss" }), {
+    kind: "private",
+    title: "비공개 채널 #인사팀에 초대됐어요",
+  });
+  assert.deepEqual(inviteNotice({ ...base, type: "dm", createdBy: "gs" }), { kind: "dm", title: "계섭님이 DM을 시작했어요" });
+  assert.equal(inviteNotice({ ...base, type: "dm", createdBy: "me" }), null); // 내가 만든 DM
+  assert.equal(inviteNotice({ ...base, type: "private", createdBy: "me" }), null); // 내가 만든 채널
+  assert.equal(inviteNotice({ ...base, type: "public", createdBy: "boss" }), null); // 공개 채널은 내가 참여
+  assert.equal(inviteNotice({ ...base, type: "dm", createdBy: "x", partnerName: null }).title, "누군가님이 DM을 시작했어요");
+});
