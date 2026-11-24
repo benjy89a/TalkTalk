@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
 import { markAsRead, READ_EVENT, type ReadEventDetail } from "./markAsRead";
 import { escapeLike, mentionsName } from "./mentions";
+import { MENTION_EVENT, type MentionEventDetail } from "./notifyRules";
 import {
   applyInsert,
   applyRead,
@@ -136,14 +137,25 @@ function mentionsMe(row: Message) {
 function onNewMessage(row: Message) {
   if (row.parent_id !== null) return; // 스레드 답글은 세지 않음
 
+  const mine = isMine(row);
+  const mentioned = mentionsMe(row);
+
+  // 나를 멘션한 새 메시지 → 알림(NotificationToasts)에 신호 (방금 참여한 채널이어도 알림은 보낸다)
+  if (mentioned) {
+    window.dispatchEvent(
+      new CustomEvent<MentionEventDetail>(MENTION_EVENT, {
+        detail: { channelId: row.channel_id, messageId: row.id, authorId: row.user_id, content: row.content },
+      }),
+    );
+  }
+
   // 모르는 채널(방금 참여한 채널 등)이면 DB 에서 다시 읽어 온다
   if (!state.channels[row.channel_id]) {
     void refreshUnread();
     return;
   }
 
-  const mine = isMine(row);
-  updateChannel(row.channel_id, (cur) => applyInsert(cur, row, mine, mentionsMe(row)));
+  updateChannel(row.channel_id, (cur) => applyInsert(cur, row, mine, mentioned));
 
   // 내가 보낸 메시지까지는 DB 에도 읽음으로 저장 (새로고침·다른 기기에서도 굵게 안 보이게)
   if (mine) void markAsRead(row.channel_id, row.id);

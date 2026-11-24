@@ -93,5 +93,22 @@ return (
 ### 테스트
 
 ```bash
-node --test components/notifications/mentions.test.mjs components/notifications/unreadRules.test.mjs
+node --test components/notifications/*.test.mjs
 ```
+
+## 알림 (멘션 알림 카드 · 윈도우 알림 · 탭 제목 숫자)
+
+```tsx
+// 팀장님 — components/layout/AppShell.tsx 의 <ChannelProvider> 안에 한 줄
+import NotificationToasts from "@/components/notifications/NotificationToasts";
+<NotificationToasts />
+```
+
+- 누가 나를 `@멘션`하면 **화면 오른쪽 위에 알림 카드**가 6초 동안 떴다가 사라집니다 (✕ 로 바로 닫기).
+  - 지금 보고 있는 채널의 멘션은 이미 눈앞에 있으므로 띄우지 않습니다.
+  - 카드를 누르면 `jumpToMessage` 로 **그 메시지까지 이동 + 강조**합니다.
+- 다른 탭·다른 프로그램을 보고 있으면 **윈도우 알림**(허락한 경우). 허락하지 않았으면 돌아왔을 때 카드로 보여 줍니다.
+- 처음 한 번 "🔔 윈도우 알림을 켤까요?" 카드가 뜹니다 (알림 켜기 / 나중에).
+- 탭 제목에 안 읽은 멘션 수: `(2) TalkTalk`
+- 화면 어디에 넣어도 `document.body` 에 포털로 붙어 오른쪽 위에 뜹니다. `useSelectedChannel()` 을 쓰므로 `ChannelProvider` 안이어야 합니다.
+- 비공개 채널 초대 알림은 `channel_members` Realtime 이 켜지면 이어서 붙입니다.
