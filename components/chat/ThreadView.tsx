@@ -22,7 +22,7 @@ import { summarize, toggleReaction, useReactions } from "./useReactions";
 export default function ThreadView() {
   const opened = useOpenThread();
   if (!opened) {
-    return <CenterText>메시지의 &quot;답글&quot;을 누르면 여기에서 스레드를 볼 수 있어요.</CenterText>;
+    return <CenterText>메시지의 &quot;스레드&quot;를 누르면 여기에서 스레드를 볼 수 있어요.</CenterText>;
   }
   // 다른 스레드를 열면 key 가 바뀌어 처음부터 다시 불러온다
   return <OpenedThread key={opened.rootId} channelId={opened.channelId} rootId={opened.rootId} />;
@@ -101,7 +101,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     <div ref={rootRef} className="flex h-full min-h-0 flex-1 flex-col">
       {/* 닫기 */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-2">
-        <span className="text-xs leading-5 font-medium text-gray-600">답글 {replies.length + omitted}개</span>
+        <span className="text-xs leading-5 font-medium text-gray-600">댓글 {replies.length + omitted}개</span>
         <button
           type="button"
           onClick={closeThread}
@@ -141,7 +141,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               <div className="my-3 flex items-center gap-3" role="separator">
                 <div className="h-px flex-1 bg-gray-200" />
                 <span className="text-xs leading-5 font-medium text-gray-600">
-                  {replies.length + omitted > 0 ? `답글 ${replies.length + omitted}개` : "아직 답글이 없어요"}
+                  {replies.length + omitted > 0 ? `댓글 ${replies.length + omitted}개` : "아직 댓글이 없어요"}
                 </span>
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
@@ -149,7 +149,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               {/* 답글이 500개를 넘으면 최신 500개만 보여준다 */}
               {omitted > 0 && (
                 <p className="mb-2 rounded-md bg-gray-50 px-3 py-2 text-center text-xs leading-5 text-gray-600">
-                  이전 답글 {omitted.toLocaleString("ko-KR")}개는 생략했어요 · 최신 {MAX_RENDERED}개만 보여드려요
+                  이전 댓글 {omitted.toLocaleString("ko-KR")}개는 생략했어요 · 최신 {MAX_RENDERED}개만 보여드려요
                 </p>
               )}
 
@@ -171,7 +171,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
 
       {/* 답글 입력창 (parent_id = 원본 메시지 id) */}
       <div className="shrink-0 border-t border-gray-200 p-3">
-        <MessageInput key={rootId} channelId={channelId} parentId={rootId} placeholder="답글 보내기" />
+        <MessageInput key={rootId} channelId={channelId} parentId={rootId} placeholder="댓글 보내기" />
       </div>
     </div>
   );

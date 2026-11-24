@@ -108,6 +108,15 @@ export default function MessageItem({
   const [tapOpen, setTapOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const closeTap = useCallback(() => setTapOpen(false), []);
+  // 마우스 막대를 말풍선 위/아래 어디에 띄울지 (마우스를 올릴 때 위쪽 공간을 재서 정함)
+  const [barBelow, setBarBelow] = useState(false);
+  function placeBar() {
+    const row = rowRef.current;
+    const box = row?.closest(".overflow-y-auto");
+    if (!row || !box) return;
+    const below = row.getBoundingClientRect().top - box.getBoundingClientRect().top < 32;
+    if (below !== barBelow) setBarBelow(below);
+  }
   useDismiss(wrapRef, tapOpen, closeTap);
   const [confirming, setConfirming] = useState(false); // 삭제 확인 줄
   const [actionError, setActionError] = useState<string | null>(null); // 수정·삭제 실패 안내
@@ -300,7 +309,7 @@ export default function MessageItem({
         data-thread-trigger
         className="shrink-0 rounded px-1 hover:text-[#1e325c]"
       >
-        답글
+        스레드
       </button>
     ) : null;
   // 답글이 있을 때: 말풍선 아래 "답글 n개 · 마지막 답글 시간"
@@ -312,7 +321,7 @@ export default function MessageItem({
         data-thread-trigger
         className="mt-0.5 text-xs leading-5 font-medium text-blue-700 hover:underline"
       >
-        답글 {thread.count}개 · {formatTime(thread.lastAt)}
+        댓글 {thread.count}개 · {formatTime(thread.lastAt)}
       </button>
     ) : null;
   // 이모지 반응: 마우스를 올리면 보이는 😊+ 버튼과 고르는 창 (저장된 메시지에만)
@@ -410,7 +419,7 @@ export default function MessageItem({
       >
         <span>
           삭제하면 &lsquo;삭제된 메시지입니다&rsquo;로 바뀌고 되돌릴 수 없어요.
-          {replyCount > 0 && ` 답글 ${replyCount}개는 그대로 남아요.`}
+          {replyCount > 0 && ` 댓글 ${replyCount}개는 그대로 남아요.`}
         </span>
         <span className="flex gap-1">
           <button
@@ -447,7 +456,7 @@ export default function MessageItem({
   const canTap = !status && !deleted && !editing && !confirming;
   type TapKey = "reply" | "react" | "quote" | "copy" | "edit" | "delete";
   const tapButtons: { key: TapKey; label: string }[] = [];
-  if (canTap && onOpenThread) tapButtons.push({ key: "reply", label: hasReplies ? `답글 ${thread.count}개` : "답글" });
+  if (canTap && onOpenThread) tapButtons.push({ key: "reply", label: hasReplies ? `스레드 · 댓글 ${thread.count}개` : "스레드" });
   if (canTap && canReact) tapButtons.push({ key: "react", label: "😊 반응" });
   if (canTap && onQuote) tapButtons.push({ key: "quote", label: "답장" });
   if (canTap) tapButtons.push({ key: "copy", label: "복사" });
@@ -493,13 +502,18 @@ export default function MessageItem({
   // 마우스를 올리면 뜨는 버튼 모음 (답장·복사·수정·삭제·😊+·답글)
   // 예전엔 말풍선 옆에 "안 보이는 채로 자리만 차지"해서, 화면이 좁으면(스레드를 연 채 창을 줄이면) 말풍선이 눌려 글이 세로로 꺾였다
   // → 말풍선 위에 떠 있는 작은 막대로 바꿔 자리를 차지하지 않게 함. 휴대폰은 말풍선 톡 → 버튼 줄(tapBar)
+  // 막대가 간혹 사라지던 문제(33번 뒤 제보): 막대와 말풍선 사이 2px 틈이 이 메시지 영역 밖(윗 메시지 쪽)이라,
+  //   마우스를 천천히 올리면 틈을 지나는 순간 "벗어남"이 되어 막대가 꺼졌다
+  //   → 바깥 칸을 투명하게 말풍선에 딱 붙여(틈 대신 투명 여백) 마우스가 말풍선 → 막대로 가는 길이 끊기지 않게.
+  //   목록 맨 위 메시지는 막대가 스크롤 칸 위로 잘려 안 보였다 → 위 공간이 모자라면 말풍선 아래에 띄운다.
   const hasHoverButtons = !!(extraActions || ownActions || reactButton || replyButton);
   const hoverBar = hasHoverButtons ? (
     <span
-      className={`absolute bottom-full z-10 mb-0.5 flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap text-gray-500 shadow-sm ${
-        mine ? "right-0" : "left-0"
-      } ${picking ? "invisible" : "invisible group-hover:visible focus-within:visible"} ${HOVER_ONLY}`}
+      className={`absolute z-10 ${barBelow ? "top-full pt-1" : "bottom-full pb-1"} ${mine ? "right-0" : "left-0"} ${
+        picking ? "invisible" : "invisible group-hover:visible focus-within:visible"
+      } ${HOVER_ONLY}`}
     >
+      <span className="flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap text-gray-500 shadow-sm">
       {mine ? (
         <>
           {extraActions}
@@ -514,6 +528,7 @@ export default function MessageItem({
           {extraActions}
         </>
       )}
+      </span>
     </span>
   ) : null;
   const rowBg = active ? "bg-blue-50" : "";
@@ -522,7 +537,12 @@ export default function MessageItem({
 
   if (mine) {
     return (
-      <div ref={wrapRef} className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
+      <div
+        ref={wrapRef}
+        onMouseEnter={placeBar}
+        onFocus={placeBar}
+        className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}
+      >
         <div ref={rowRef} className={`relative flex ${maxW} items-end gap-1.5`}>
           {picker}
           {hoverBar}
@@ -581,7 +601,12 @@ export default function MessageItem({
   }
 
   return (
-    <div ref={wrapRef} className={`group flex gap-2 rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
+    <div
+      ref={wrapRef}
+      onMouseEnter={placeBar}
+      onFocus={placeBar}
+      className={`group flex gap-2 rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}
+    >
       {/* 왼쪽: 묶음 첫 메시지에만 아바타, 나머지는 같은 너비의 빈칸 */}
       <div className="w-9 shrink-0">
         {first && (
