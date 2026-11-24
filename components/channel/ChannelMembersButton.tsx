@@ -27,6 +27,8 @@ import {
   type ChannelInfo,
   type Member,
 } from "./members";
+import OnlineDot from "./OnlineDot";
+import { useOnlineUsers } from "./presence";
 import { ChannelDialog, primaryButton, secondaryButton, textInput, toKoreanChannelError } from "./ui";
 
 type Props = {
@@ -53,6 +55,8 @@ function MembersPanel({ channelId, onChanged, onDeleted }: Props) {
   const [appAdminIds, setAppAdminIds] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
+  // 접속 중인 사용자 (멤버 이름 옆 초록 점)
+  const online = useOnlineUsers();
 
   const load = useCallback(async () => {
     try {
@@ -221,15 +225,27 @@ function MembersPanel({ channelId, onChanged, onDeleted }: Props) {
         </p>
       )}
 
-      <p className="text-sm text-gray-600">멤버 {members.length}명</p>
+      <p className="text-sm text-gray-600">
+        멤버 {members.length}명
+        <span className="ml-2 inline-flex items-center gap-1 text-emerald-700">
+          <OnlineDot online className="h-2 w-2" />
+          접속 중 {members.filter((m) => online.has(m.userId)).length}명
+        </span>
+      </p>
       <ul className="max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200">
         {members.map((m) => (
           <li key={m.userId} className="flex items-center gap-3 px-3 py-2">
-            <span
-              aria-hidden="true"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[#1e325c] text-xs font-bold text-white"
-            >
-              {m.name.slice(0, 1)}
+            <span className="relative shrink-0">
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 items-center justify-center rounded bg-[#1e325c] text-xs font-bold text-white"
+              >
+                {m.name.slice(0, 1)}
+              </span>
+              <OnlineDot
+                online={online.has(m.userId)}
+                className="absolute -bottom-0.5 -right-0.5"
+              />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm">
               {m.name}
