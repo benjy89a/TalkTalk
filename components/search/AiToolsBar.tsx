@@ -8,18 +8,20 @@ import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiReq
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 
 type Props = { channelId: string | null };
+/** 결과의 메시지를 눌렀을 때 호출된다 (CONTRACTS.md 3번 "메시지로 이동 규격"). 없으면 결과는 눌러지지 않는다. */
+type JumpProps = { onSelectMessage?: (channelId: string, messageId: number) => void };
 type SummaryState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "success"; summary: string }
   | { status: "error"; code: string; message: string };
 
-export default function AiToolsBar({ channelId }: Props) {
+export default function AiToolsBar({ channelId, onSelectMessage }: Props & JumpProps) {
   // 채널 변경 시 이전 채널의 결과·요청 상태를 함께 초기화한다.
-  return <ChannelAiTools key={channelId ?? "no-channel"} channelId={channelId} />;
+  return <ChannelAiTools key={channelId ?? "no-channel"} channelId={channelId} onSelectMessage={onSelectMessage} />;
 }
 
-function ChannelAiTools({ channelId }: Props) {
+function ChannelAiTools({ channelId, onSelectMessage }: Props & JumpProps) {
   // 채팅 영역을 밀어내지 않도록 평소에는 버튼 한 줄만 보이고,
   // 열면 입력창 위에 떠 있는 패널(최대 높이 제한·스크롤)로 보여 준다. 닫아도 결과는 유지된다.
   const [open, setOpen] = useState(false);
@@ -44,7 +46,11 @@ function ChannelAiTools({ channelId }: Props) {
         </div>
         {active && <p className="text-xs leading-5 text-gray-600">다른 AI 작업은 완료·취소 후 사용할 수 있습니다. 패널을 닫아도 계속 처리됩니다. 취소해도 업체에서 이미 처리한 사용량은 되돌릴 수 없습니다.</p>}
         <ChannelSummary channelId={channelId} gate={gate} />
-        <AiExtraTools channelId={channelId} requestGate={gate} />
+        <AiExtraTools channelId={channelId} requestGate={gate}
+          onSelectMessage={onSelectMessage && ((id, messageId) => {
+            setOpen(false); // 채팅이 보이도록 패널을 닫는다 (결과는 유지된다)
+            onSelectMessage(id, messageId);
+          })} />
       </div>
     </div>
   );
