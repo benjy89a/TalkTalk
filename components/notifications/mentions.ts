@@ -3,12 +3,55 @@
 // 멘션은 별도 테이블 없이 메시지 본문의 "@이름" 글자로 판단한다.
 // - "@수정님 확인 부탁해요" 처럼 이름 뒤에 글자가 붙어도 멘션으로 본다 (한국어 호칭 때문)
 // - 영문 대소문자는 구분하지 않는다
+// - 이름이 다른 이름의 앞부분이면("문수정Test" / "문수정Test2") **가장 길게 맞는 이름**의 사람만 멘션
+// - "@all" 은 채널 멤버 전원 멘션 (뒤에 영문·숫자가 이어지면 아님: "@allen")
+// - 이메일처럼 "@" 앞에 글자가 붙어 있으면 멘션이 아님 (a@b.com) — 말풍선 강조(B formatText)와 같은 규칙
 
-/** 본문에 "@이름" 이 들어 있으면 true */
-export function mentionsName(content: string, name: string): boolean {
-  const n = name.trim().toLowerCase();
-  if (!n) return false;
-  return content.toLowerCase().includes(`@${n}`);
+/** 전체 멘션 단어 */
+export const ALL_MENTION = "all";
+
+export type MentionCheck = {
+  me: boolean; // "@내이름" 으로 나를 불렀는지
+  all: boolean; // "@all" 로 전체를 불렀는지
+};
+
+const BEFORE_AT_BLOCK = /[\p{L}\p{N}_.@]/u; // "@" 바로 앞에 이 글자가 있으면 멘션 아님
+const AFTER_ALL_BLOCK = /^[a-z0-9_]/i; // "@all" 바로 뒤에 이 글자가 이어지면 전체 멘션 아님
+
+/**
+ * 본문이 나를 멘션했는지 / 전체 멘션인지.
+ * knownNames: 가입한 사람들의 이름 목록 (가장 길게 맞는 이름을 고르기 위해). 내 이름은 없어도 자동으로 포함.
+ */
+export function checkMention(content: string, myName: string, knownNames: readonly string[] = []): MentionCheck {
+  const result: MentionCheck = { me: false, all: false };
+  const me = myName.trim().toLowerCase();
+  const names = [...new Set([...knownNames, myName].map((n) => n.trim().toLowerCase()).filter(Boolean))].sort(
+    (a, b) => b.length - a.length,
+  );
+  const lower = content.toLowerCase();
+
+  for (let i = lower.indexOf("@"); i !== -1; i = lower.indexOf("@", i + 1)) {
+    if (i > 0 && BEFORE_AT_BLOCK.test(lower[i - 1])) continue;
+    const rest = lower.slice(i + 1);
+
+    // 가장 길게 맞는 사람 이름 (예: "@문수정test2" → "문수정test2", "@문수정test님" → "문수정test")
+    const longest = names.find((n) => rest.startsWith(n));
+    if (longest) {
+      if (longest === me) result.me = true;
+      continue;
+    }
+    if (rest.startsWith(ALL_MENTION) && !AFTER_ALL_BLOCK.test(rest.slice(ALL_MENTION.length))) {
+      result.all = true;
+    }
+  }
+  return result;
+}
+
+/** 나를 불렀거나 전체 멘션이면 true */
+export function isMentioned(content: string, myName: string, knownNames: readonly string[] = []): boolean {
+  if (!myName.trim()) return false;
+  const c = checkMention(content, myName, knownNames);
+  return c.me || c.all;
 }
 
 /** DB 검색(ilike)용: % _ \ 를 글자 그대로 찾도록 바꾼다 */

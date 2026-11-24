@@ -8,6 +8,8 @@ export type MentionEventDetail = {
   messageId: number;
   authorId: string;
   content: string;
+  parentId: number | null; // 스레드 댓글이면 원본 메시지 id
+  all: boolean; // "@all" 전체 멘션이고 내 이름으로는 부르지 않았으면 true
 };
 
 /** 알림 카드가 화면에 머무는 시간 (ms) */
@@ -29,28 +31,53 @@ export function previewText(content: string, max = 60): string {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
 }
 
-/** 알림 제목: "계섭님이 #프로젝트-알파에서 나를 언급했어요" / DM 이면 "계섭님이 DM에서…" */
-export function mentionTitle(authorName: string, channel: { name: string; type: string } | null): string {
+/**
+ * 알림 제목
+ * - "계섭님이 #프로젝트-알파에서 나를 언급했어요" / DM 이면 "계섭님이 DM에서…"
+ * - 스레드 댓글이면 "…#프로젝트-알파 스레드 댓글에서 나를 언급했어요"
+ * - @all 이면 "…#프로젝트-알파에서 전체에게 알렸어요"
+ */
+export function mentionTitle(
+  authorName: string,
+  channel: { name: string; type: string } | null,
+  opts: { thread?: boolean; all?: boolean } = {},
+): string {
   const who = authorName.trim() || "누군가";
-  if (!channel) return `${who}님이 나를 언급했어요`;
-  const where = channel.type === "dm" ? "DM" : `#${channel.name}`;
-  return `${who}님이 ${where}에서 나를 언급했어요`;
+  const where = channel ? (channel.type === "dm" ? "DM" : `#${channel.name}`) : "";
+  const place = `${where}${opts.thread ? `${where ? " " : ""}스레드 댓글` : ""}`;
+  const what = opts.all ? "전체에게 알렸어요" : "나를 언급했어요";
+  return place ? `${who}님이 ${place}에서 ${what}` : `${who}님이 ${what}`;
+}
+
+/**
+ * 지금 그 메시지가 이미 화면에 보이는지
+ * - 본문 메시지: 그 채널을 보고 있으면 보임
+ * - 스레드 댓글: 그 원본의 스레드 패널을 열어 두었을 때만 보임 (채널 본문에는 댓글이 안 나오므로)
+ */
+export function isOnScreen(input: {
+  channelId: string;
+  parentId: number | null;
+  activeChannelId: string | null;
+  openThreadRootId: number | null;
+}): boolean {
+  const { channelId, parentId, activeChannelId, openThreadRootId } = input;
+  if (channelId !== activeChannelId) return false;
+  return parentId === null ? true : parentId === openThreadRootId;
 }
 
 /**
  * 알림을 띄울지 정한다.
- * - 지금 보고 있는 채널(탭이 보이는 상태)이면 메시지가 이미 눈앞에 있으므로 아무것도 안 띄움
+ * - 이미 화면에 보이는 메시지(onScreen)이고 탭이 보이는 상태면 아무것도 안 띄움
  * - 탭이 보이면 화면 안 알림 카드, 탭이 숨겨져 있으면(다른 탭·다른 프로그램) 윈도우 알림
  */
 export function chooseNotify(input: {
-  messageChannelId: string;
-  activeChannelId: string | null;
+  onScreen: boolean;
   pageVisible: boolean;
   desktopAllowed: boolean;
 }): { toast: boolean; desktop: boolean } {
-  const { messageChannelId, activeChannelId, pageVisible, desktopAllowed } = input;
+  const { onScreen, pageVisible, desktopAllowed } = input;
   if (pageVisible) {
-    return { toast: messageChannelId !== activeChannelId, desktop: false };
+    return { toast: !onScreen, desktop: false };
   }
   // 탭이 안 보일 때: 윈도우 알림이 허락돼 있으면 그걸로, 아니면 돌아왔을 때 보이도록 카드로 남겨 둔다
   return { toast: !desktopAllowed, desktop: desktopAllowed };

@@ -22,9 +22,12 @@
 // (MessageInput 의 onKeyDown 코드는 고치지 않아도 된다)
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { findMentionQuery, insertMention } from "./mentions";
+import { ALL_MENTION, findMentionQuery, insertMention } from "./mentions";
 
-type Member = { id: string; name: string };
+type Member = { id: string; name: string; note?: string };
+
+// "@all" — 채널 멤버 전원에게 알림 (목록 맨 위). 1:1 대화처럼 상대가 한 명뿐이면 보여 주지 않는다
+const ALL_ENTRY: Member = { id: "__all__", name: ALL_MENTION, note: "채널 모든 멤버에게 알림" };
 
 type Options = {
   channelId: string;
@@ -88,7 +91,8 @@ export function useMentionAutocomplete({ channelId, textareaRef, text, setText }
         Number(!a.name.toLowerCase().startsWith(query)) -
         Number(!b.name.toLowerCase().startsWith(query)),
     );
-    return hit.slice(0, MAX_SUGGESTIONS);
+    const withAll = members.length >= 2 && ALL_MENTION.startsWith(query) ? [ALL_ENTRY, ...hit] : hit;
+    return withAll.slice(0, MAX_SUGGESTIONS);
   }, [members, query, hasMatch]);
 
   const open = match !== null && match.start !== dismissedAt && suggestions.length > 0;
@@ -186,6 +190,9 @@ export function useMentionAutocomplete({ channelId, textareaRef, text, setText }
             className={`cursor-pointer truncate px-3 py-2 ${i === index ? "bg-[#1e325c] text-white" : ""}`}
           >
             @{m.name}
+            {m.note && (
+              <span className={`ml-2 text-xs ${i === index ? "text-white/80" : "text-gray-500"}`}>{m.note}</span>
+            )}
           </li>
         ))}
       </ul>

@@ -2,13 +2,38 @@
 // 실행: node --test components/notifications/mentions.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
-import { escapeLike, findMentionQuery, insertMention, mentionsName } from "./mentions.ts";
+import { checkMention, escapeLike, findMentionQuery, insertMention, isMentioned } from "./mentions.ts";
 
 test("본문에 @이름 이 있으면 멘션", () => {
-  assert.equal(mentionsName("@문수정님 확인 부탁해요", "문수정"), true); // 호칭이 붙어도 멘션
-  assert.equal(mentionsName("hi @Alice", "alice"), true); // 대소문자 무시
-  assert.equal(mentionsName("문수정 확인", "문수정"), false); // @ 없으면 아님
-  assert.equal(mentionsName("@ 누구", "  "), false); // 빈 이름은 아님
+  assert.equal(isMentioned("@문수정님 확인 부탁해요", "문수정"), true); // 호칭이 붙어도 멘션
+  assert.equal(isMentioned("hi @Alice", "alice"), true); // 대소문자 무시
+  assert.equal(isMentioned("문수정 확인", "문수정"), false); // @ 없으면 아님
+  assert.equal(isMentioned("@ 누구", "  "), false); // 빈 이름은 아님
+  assert.equal(isMentioned("메일은 a@문수정.com", "문수정"), false); // @ 앞에 글자가 붙으면 아님
+});
+
+test("이름 앞부분이 겹치면 가장 길게 맞는 사람만", () => {
+  const names = ["문수정Test", "문수정Test2", "계섭"];
+  // "@문수정Test2" → Test2 만
+  assert.deepEqual(checkMention("@문수정Test2 확인", "문수정Test", names), { me: false, all: false });
+  assert.deepEqual(checkMention("@문수정Test2 확인", "문수정Test2", names), { me: true, all: false });
+  // "@문수정Test님" → Test (호칭 허용 유지)
+  assert.equal(isMentioned("@문수정Test님 확인", "문수정Test", names), true);
+  assert.equal(isMentioned("@문수정Test님 확인", "문수정Test2", names), false);
+  // 이름 목록을 못 불러온 경우에도 내 이름은 찾음
+  assert.equal(isMentioned("@문수정Test 확인", "문수정Test"), true);
+  // 한 메시지에 여러 명
+  assert.equal(isMentioned("@계섭 @문수정Test 둘 다 봐 주세요", "문수정Test", names), true);
+});
+
+test("@all 은 전체 멘션", () => {
+  const names = ["문수정Test", "allen"];
+  assert.deepEqual(checkMention("@all 회의 10분 전", "문수정Test", names), { me: false, all: true });
+  assert.equal(isMentioned("@ALL 공지", "문수정Test", names), true); // 대소문자 무시
+  assert.equal(isMentioned("@all님 확인", "문수정Test", names), true); // 한국어 호칭은 허용
+  assert.equal(isMentioned("@allen 확인", "문수정Test", names), false); // allen 은 다른 사람
+  assert.equal(isMentioned("@alldone", "문수정Test", []), false); // 영문이 이어지면 아님
+  assert.equal(isMentioned("x@all.com", "문수정Test", names), false); // 이메일 아님
 });
 
 test("커서 앞의 @글자 찾기", () => {
