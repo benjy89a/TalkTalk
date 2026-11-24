@@ -127,12 +127,18 @@ test("비JSON·추론만 있는 응답·코드 블록·잘림·잘못된 스키�
     new Response("not JSON"), Response.json(null), Response.json({ choices: [] }),
     Response.json({ choices: [{ finish_reason: "stop", message: { reasoning_content: JSON.stringify(plan) } }] }),
     Response.json({ choices: [{ finish_reason: "stop", message: { content: `\u0060\u0060\u0060json\n${JSON.stringify(plan)}\n\u0060\u0060\u0060` } }] }),
-    completion({ ...plan, sql: "SELECT *" }), completion({ keywords: [], from: null, to: null }),
+    completion({ ...plan, sql: "SELECT *" }),
     completion(plan, "content_filter"),
   ]) {
     const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => response });
     await assert.rejects(adapter.interpret("배포", context, signal()), errorIs(502, "INVALID_AI_RESPONSE"));
   }
+  // 형식은 정상인데 키워드·기간이 모두 없는 응답(모호한 질문)은 502가 아니라 400 입력 안내
+  await assert.rejects(
+    createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => completion({ keywords: [], from: null, to: null }) })
+      .interpret("이제", context, signal()),
+    errorIs(400, "INVALID_QUERY"),
+  );
   await assert.rejects(createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => completion(plan, "length") })
     .interpret("배포", context, signal()), errorIs(502, "AI_OUTPUT_TRUNCATED"));
   for (const task of [{ ...tasks.tasks[0], messageIds: [999] }, { ...tasks.tasks[0], assignee: "없는 이름" }, { ...tasks.tasks[0], dueDate: "2026-02-30" }]) {
