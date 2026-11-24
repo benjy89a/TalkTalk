@@ -9,8 +9,15 @@
 // Enter: 전송 / Shift+Enter: 줄바꿈 / 최대 6줄까지 늘어나고 그 이상은 입력창 안에서 스크롤
 // 😊 버튼 (작업 2): 이모지를 골라 커서 자리에 넣는다. 창은 여러 개 연달아 고를 수 있게 열린 채로 둠 (바깥 클릭 · Esc 로 닫힘)
 // "○○님이 입력 중…" (typing.ts): 같은 채널(스레드면 같은 스레드)에서 다른 사람이 글을 치면 입력창 바로 위에 표시
+// 쓰던 글 임시 저장 (drafts.ts): 채널을 옮기거나 새로고침해도 쓰던 글이 남아 있음
+// 답장 (composer.ts): 말풍선 "답장" → 입력창 위 "○○님에게 답장" 줄 (✕ · Esc 로 취소). 보내면 맨 앞에 인용 줄
+// ↑ 키: 입력창이 비어 있으면 내 마지막 메시지 수정
+// 이모지 단축 입력 (emojiShortcode.ts): ":웃음" → 후보 목록. ↑↓ 이동 · Enter/Tab 넣기 · Esc 닫기
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { composerScope, requestEditLast, setQuote, useQuote, withQuote } from "./composer";
+import { draftKey, readDraft, writeDraft } from "./drafts";
 import EmojiPicker, { useDismiss } from "./EmojiPicker";
+import { findShortcode, matchEmojis } from "./emojiShortcode";
 import { useMentionAutocomplete } from "@/components/notifications/useMentionAutocomplete";
 import { wrapSelection } from "./formatText";
 import { MAX_LENGTH, sendMessage } from "./outbox";
@@ -31,8 +38,14 @@ export default function MessageInput({
   placeholder = "메시지 보내기",
   extras,
 }: Props) {
-  const [text, setText] = useState("");
+  // 쓰던 글이 있으면 불러온다 (입력창은 채널·스레드가 바뀔 때마다 새로 만들어짐 — key)
+  const storeKey = draftKey(channelId, parentId);
+  const [text, setText] = useState(() => readDraft(storeKey));
   const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    writeDraft(storeKey, text);
+  }, [storeKey, text]);
+  const [caret, setCaret] = useState(0); // 커서 위치 (이모지 단축 입력용)
   // 입력한 글자를 "멘션 훅보다 먼저" 기억한다.
   // 멘션 훅은 입력창에 직접 input 리스너를 붙여 커서 위치를 상태로 바꾸는데, 그 순간 화면이 다시 그려지면서
   // 아직 새 글자를 모르는 입력창이 이전 값(빈 칸)으로 되돌아가 "글자가 안 써지는" 문제가 있었다.
@@ -40,7 +53,10 @@ export default function MessageInput({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const sync = () => setText(el.value);
+    const sync = () => {
+      setText(el.value);
+      setCaret(el.selectionStart);
+    };
     el.addEventListener("input", sync);
     return () => el.removeEventListener("input", sync);
   }, []);
@@ -58,6 +74,7 @@ export default function MessageInput({
     const start = el?.selectionStart ?? text.length;
     const end = el?.selectionEnd ?? text.length;
     setText(text.slice(0, start) + emoji + text.slice(end));
+    setCaret(start + emoji.length);
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(start + emoji.length, start + emoji.length);
@@ -70,6 +87,38 @@ export default function MessageInput({
     if (text.trim()) notifyTyping();
     else notifyStopped();
   }, [text, notifyTyping, notifyStopped]);
+
+  // 답장 인용
+  const scope = composerScope(channelId, parentId);
+  const quote = useQuote(scope);
+  useEffect(() => {
+    if (quote) ref.current?.focus(); // "답장"을 누르면 바로 칠 수 있게
+  }, [quote]);
+  const clearQuote = () => setQuote(scope, null);
+
+  // 이모지 단축 입력 ":웃음"
+  const shortcode = findShortcode(text, caret);
+  const [closedAt, setClosedAt] = useState<number | null>(null); // Esc 로 닫은 자리 (같은 자리에선 다시 안 뜸)
+  const suggestions = shortcode && shortcode.start !== closedAt ? matchEmojis(shortcode.query) : [];
+  const [pickIndex, setPickIndex] = useState(0);
+  const [indexFor, setIndexFor] = useState("");
+  const sugKey = shortcode ? `${shortcode.start}:${shortcode.query}` : "";
+  if (indexFor !== sugKey) {
+    // 검색어가 바뀌면 첫 후보부터
+    setIndexFor(sugKey);
+    setPickIndex(0);
+  }
+  function pickShortcode(emoji: string) {
+    if (!shortcode) return;
+    const next = text.slice(0, shortcode.start) + emoji + text.slice(caret);
+    const pos = shortcode.start + emoji.length;
+    setText(next);
+    setCaret(pos);
+    requestAnimationFrame(() => {
+      ref.current?.focus();
+      ref.current?.setSelectionRange(pos, pos);
+    });
+  }
 
   const remaining = MAX_LENGTH - text.length;
   const tooLong = remaining < 0;
@@ -91,13 +140,47 @@ export default function MessageInput({
   function submit() {
     if (!canSend) return;
     // 입력창은 바로 비우고, 저장은 뒤에서 진행 (화면에는 즉시 흐리게 나타남)
-    sendMessage({ channelId, parentId, content: text });
+    // 답장이면 맨 앞에 "> 이름: 원문" 줄을 붙여 보낸다
+    sendMessage({ channelId, parentId, content: withQuote(quote, text) });
     notifyStopped();
+    clearQuote();
     setText("");
     ref.current?.focus();
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // 멘션 목록(D 훅)이 이미 처리한 키는 건드리지 않음
+    if (e.defaultPrevented) return;
+    // 이모지 단축 입력 목록이 열려 있으면 ↑↓ · Enter/Tab · Esc 는 목록용
+    if (suggestions.length > 0 && !e.nativeEvent.isComposing) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setPickIndex((i) => (i + step + suggestions.length) % suggestions.length);
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        pickShortcode(suggestions[Math.min(pickIndex, suggestions.length - 1)].emoji);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault(); // 스레드 패널 닫기(Esc)와 겹치지 않게
+        setClosedAt(shortcode!.start);
+        return;
+      }
+    }
+    // 답장 취소
+    if (e.key === "Escape" && quote) {
+      e.preventDefault();
+      clearQuote();
+      return;
+    }
+    // 입력창이 비어 있을 때 ↑ → 내 마지막 메시지 수정 (없으면 원래 ↑)
+    if (e.key === "ArrowUp" && !text && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (requestEditLast(scope)) e.preventDefault();
+      return;
+    }
     // 서식 단축키: 글자를 선택하고 Cmd/Ctrl+B 굵게, +I 기울임, +Shift+X 취소선
     if ((e.metaKey || e.ctrlKey) && !e.altKey) {
       const k = e.key.toLowerCase();
@@ -123,18 +206,61 @@ export default function MessageInput({
       {mention.popup}
       {/* 다른 사람이 입력 중 — 입력창 바로 위에 띄워서 입력창 위치가 들썩이지 않게 */}
       <div className="relative">
+        {/* 이모지 단축 입력 후보 */}
+        {suggestions.length > 0 && (
+          <ul
+            role="listbox"
+            aria-label="이모지 후보"
+            className="absolute bottom-full left-0 z-30 mb-1 max-w-full overflow-hidden rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg"
+          >
+            {suggestions.map((s, i) => (
+              <li key={s.emoji} role="option" aria-selected={i === pickIndex}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()} // 입력창 초점을 뺏지 않게
+                  onClick={() => pickShortcode(s.emoji)}
+                  onMouseEnter={() => setPickIndex(i)}
+                  className={`flex w-full items-center gap-2 px-3 py-1 text-left ${i === pickIndex ? "bg-blue-50 text-[#1e325c]" : "text-gray-700"}`}
+                >
+                  <span className="text-lg leading-6">{s.emoji}</span>
+                  <span className="text-xs text-gray-500">:{s.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {typingText && (
           <p role="status" className="absolute bottom-full left-1 mb-0.5 text-xs leading-4 text-gray-500 italic">
             {typingText}
           </p>
         )}
       </div>
+      {/* 답장 중: 누구의 어떤 글에 답하는지 */}
+      {quote && (
+        // 카톡처럼: 입력창 바로 위에 "○○에게 답장" + 원문 한 줄, 오른쪽 ✕
+        <div className="mb-2 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 py-2 pr-2 pl-3">
+          <span aria-hidden className="text-lg leading-none font-semibold text-[#1e325c]">↳</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs leading-5 font-semibold text-gray-900">{quote.name}에게 답장</p>
+            <p className="truncate text-xs leading-5 text-gray-500">{quote.text}</p>
+          </div>
+          <button
+            type="button"
+            onClick={clearQuote}
+            aria-label="답장 취소"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-800"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className="flex items-end gap-2">
         <textarea
           ref={ref}
           rows={1}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           aria-label={placeholder}

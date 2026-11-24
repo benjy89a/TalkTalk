@@ -1,7 +1,8 @@
 "use client";
 // [B] 메시지 말풍선 목록 그리기 (채널 본문 MessageList 와 스레드 ThreadView 가 같이 씀)
 // 날짜 구분선, 5분 안 연속 메시지 묶기, 내 메시지 오른쪽 정렬, 답글 링크
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
+import { quoteSnippet, setLastMine, setQuote } from "./composer";
 import MessageItem from "./MessageItem";
 import { formatDateDivider, isGroupedWith, isSameDay } from "./format";
 import type { DisplayMessage } from "./outbox";
@@ -11,6 +12,7 @@ import { summarize, type ReactionMap } from "./useReactions";
 type Props = {
   messages: DisplayMessage[];
   myId: string | null;
+  scope?: string; // 입력창과 짝이 되는 칸 이름 (composer.ts) — 답장 인용 · ↑ 키 수정에 씀
   replyStats?: ReplyStats; // 있으면 "답글 n개" / "답글 달기" 를 보여줌 (채널 본문용)
   onOpenThread?: (rootId: number) => void;
   activeRootId?: number | null; // 지금 스레드 패널에 열린 원본 메시지 (살짝 강조)
@@ -23,6 +25,7 @@ type Props = {
 export default function MessageRows({
   messages,
   myId,
+  scope,
   replyStats,
   onOpenThread,
   activeRootId,
@@ -31,6 +34,21 @@ export default function MessageRows({
   reactions,
   onReact,
 }: Props) {
+  // ↑ 키로 고칠 "내 마지막 메시지" (저장됐고 지워지지 않은 것)를 입력창에 알려 둔다
+  let lastMineId: number | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m.status && !m.deleted_at && myId && m.user_id === myId) {
+      lastMineId = m.id;
+      break;
+    }
+  }
+  useEffect(() => {
+    if (!scope) return;
+    setLastMine(scope, lastMineId);
+    return () => setLastMine(scope, undefined);
+  }, [scope, lastMineId]);
+
   return (
     <>
       {messages.map((m, i) => {
@@ -55,6 +73,11 @@ export default function MessageRows({
               wide={wide}
               reactions={reactions ? summarize(reactions[m.id], myId) : undefined}
               onReact={onReact && !m.status ? (emoji, mine) => onReact(m.id, emoji, mine) : undefined}
+              onQuote={
+                scope && !m.status && !m.deleted_at
+                  ? () => setQuote(scope, { name: m.profiles?.name || "알 수 없음", text: quoteSnippet(m.content) })
+                  : undefined
+              }
             />
             </div>
           </Fragment>

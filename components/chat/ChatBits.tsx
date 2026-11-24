@@ -63,3 +63,20 @@ export function JumpToLatestButton({ onClick }: { onClick: () => void }) {
     </button>
   );
 }
+
+// 위로 올려 예전 메시지를 보는 중일 때 오른쪽 아래 동그란 ↓ (카톡처럼) — 누르면 맨 아래 최신 글로
+// 새 메시지가 와 있으면 가운데 "새 메시지 n개 ↓" 가 대신 뜨므로 그때는 숨긴다
+export function ScrollDownButton({ show, onClick }: { show: boolean; onClick: () => void }) {
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="맨 아래 최신 메시지로 가기"
+      title="최신 메시지로"
+      className="absolute right-4 bottom-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-lg text-gray-700 shadow-md transition-colors hover:bg-gray-50 hover:text-[#1e325c] focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:outline-none"
+    >
+      ↓
+    </button>
+  );
+}
