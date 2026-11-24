@@ -6,6 +6,9 @@
 //   멤버 초대 · 내보내기 버튼이 보인다 (DM 은 2명 고정이라 제외)
 // - 관리할 수 있는 사람만: 관리자 지정·해제 (마지막 관리자는 해제 못 함), 채널 이름 변경·삭제 (#general 삭제 불가)
 // - 서비스 관리자에게는 "서비스 관리자" 배지 (채널 관리자 배지와 색을 다르게)
+// - 누구나(DM 제외): "채널 나가기" — 비공개 채널은 둘러보기에 안 나와서 여기가 유일한 나가는 길
+//   · 내가 유일한 관리자이고 다른 멤버가 있으면 먼저 다른 사람을 관리자로 지정하도록 막는다
+//   · 비공개 채널에 나 혼자면 나가면 아무도 못 들어오므로 "채널 삭제"를 안내한다
 // - 버튼을 숨기는 건 편의일 뿐, 진짜 권한 검사는 DB(RLS)가 한다
 //
 // 사용 예 (팀장 통합 때, 메시지 영역 헤더 오른쪽 등):
@@ -33,8 +36,12 @@ import { ChannelDialog, primaryButton, secondaryButton, textInput, toKoreanChann
 
 type Props = {
   channelId: string;
-  onChanged?: () => void; // 초대·내보내기·이름 변경 후 (예: 사이드바 목록 새로고침)
+  onChanged?: () => void; // 초대·내보내기·이름 변경·나가기 후 (예: 사이드바 목록 새로고침)
   onDeleted?: () => void; // 채널을 삭제한 뒤 (예: 선택 채널 비우기)
+};
+
+type PanelProps = Props & {
+  onLeft?: () => void; // 내가 채널에서 나간 뒤 (대화상자 닫기)
 };
 
 type Person = Pick<Profile, "id" | "name">;
@@ -42,7 +49,7 @@ type Person = Pick<Profile, "id" | "name">;
 const MAX_NAME = 30;
 const smallButton = `${secondaryButton} min-h-8 px-2 py-1 text-xs`;
 
-function MembersPanel({ channelId, onChanged, onDeleted }: Props) {
+function MembersPanel({ channelId, onChanged, onDeleted, onLeft }: PanelProps) {
   const [me, setMe] = useState<string | null>(null);
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
@@ -91,6 +98,33 @@ function MembersPanel({ channelId, onChanged, onDeleted }: Props) {
   const canManage = canManageChannel && channel !== null && channel.type !== "dm";
   const adminCount = (members ?? []).filter((m) => m.role === "admin").length;
   const isGeneral = channel?.type === "public" && channel.name === "general";
+  const myRole = (members ?? []).find((m) => m.userId === me)?.role;
+  const memberCount = (members ?? []).length;
+  // 나가기를 막아야 하는 경우와 그 이유 (null 이면 나갈 수 있음)
+  const leaveBlockedReason =
+    myRole === "admin" && adminCount === 1 && memberCount > 1
+      ? "내가 이 채널의 유일한 관리자예요. 나가기 전에 다른 멤버를 \"관리자로\" 지정해 주세요."
+      : channel?.type === "private" && memberCount === 1
+        ? "혼자 남은 비공개 채널이에요. 나가면 아무도 들어올 수 없어서, 나가는 대신 \"채널 삭제\"를 이용해 주세요."
+        : null;
+
+  async function leaveChannel() {
+    if (!channel || !me) return;
+    if (!window.confirm(`#${channel.name} 채널에서 나갈까요?\n다시 들어오려면 ${channel.type === "private" ? "관리자의 초대가" : "둘러보기에서 참여가"} 필요해요.`)) {
+      return;
+    }
+    setBusyId("leave");
+    setError(null);
+    setNotice(null);
+    try {
+      await removeMember(createClient(), channelId, me);
+      onChanged?.();
+      onLeft?.();
+    } catch (err) {
+      setError(toKoreanChannelError(err));
+      setBusyId(null);
+    }
+  }
 
   async function changeRole(member: Member, role: MemberRole) {
     const label = role === "admin" ? "관리자로 지정할까요?" : "관리자에서 해제할까요?";
@@ -383,6 +417,21 @@ function MembersPanel({ channelId, onChanged, onDeleted }: Props) {
           )}
         </div>
       )}
+
+      {/* 채널 나가기 (DM 제외, 내가 멤버일 때) */}
+      {channel && channel.type !== "dm" && myRole && (
+        <div className="space-y-2 border-t border-gray-100 pt-3">
+          {leaveBlockedReason && <p className="text-xs text-gray-500">{leaveBlockedReason}</p>}
+          <button
+            type="button"
+            disabled={busyId !== null || leaveBlockedReason !== null}
+            onClick={leaveChannel}
+            className={`${secondaryButton} text-red-600 hover:bg-red-50`}
+          >
+            {busyId === "leave" ? "나가는 중…" : "채널 나가기"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -409,6 +458,7 @@ export default function ChannelMembersButton({ channelId, onChanged, onDeleted }
               setOpen(false);
               onDeleted?.();
             }}
+            onLeft={() => setOpen(false)}
           />
         </ChannelDialog>
       )}
