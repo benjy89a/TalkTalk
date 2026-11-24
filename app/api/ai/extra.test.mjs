@@ -265,14 +265,13 @@ test("할 일: 담당자·기한 미정은 null, 결과 없음은 연결 함수�
   assert.deepEqual((await empty.json()).tasks, []);
 });
 
-test("할 일: 근거 없는 ID·이름·잘못된 기한·형식·결과 수 거절", async (t) => {
+test("할 일: 근거 없는 ID·잘못된 기한·형식·결과 수 거절", async (t) => {
   const cases = [
     null, { tasks: "invalid" }, { tasks: Array(21).fill(task) },
     { tasks: [{ ...task, content: " " }] }, { tasks: [{ ...task, content: "가".repeat(1001) }] },
     { tasks: [{ ...task, messageIds: [] }] }, { tasks: [{ ...task, messageIds: [999] }] },
     { tasks: [{ ...task, messageIds: ["10"] }] }, { tasks: [{ ...task, messageIds: Array(11).fill(10) }] },
-    { tasks: [{ ...task, assignee: "원문에없는사람" }] },
-    { tasks: [{ ...task, messageIds: [11] }] },
+    { tasks: [{ ...task, due: 123 }] }, { tasks: [{ ...task, due: "가".repeat(101) }] }, { tasks: [{ ...task, assignee: 7 }] },
     { tasks: [{ ...task, dueDate: "내일" }] }, { tasks: [{ ...task, dueDate: "2026-02-30" }] },
     { tasks: [{ ...task, dueDate: "2026-11-31" }] },
     { tasks: [{ ...task, extra: true }] }, { tasks: [task], extra: true },
@@ -283,6 +282,43 @@ test("할 일: 근거 없는 ID·이름·잘못된 기한·형식·결과 수 �
       await expectError(await handleExtractTasks(request({ channelId }), createClient, async () => value), 502, "INVALID_AI_RESPONSE");
     });
   }
+});
+
+test("할 일: 담당자가 근거 본문에 없으면 응답을 거절하지 않고 null로 고침", async () => {
+  const { createClient } = mockClient();
+  for (const value of [
+    { ...task, assignee: "원문에없는사람" },                 // 지어낸 이름
+    { ...task, assignee: "재문", messageIds: [11] },        // 근거 메시지(11)에 이름이 없음
+    { ...task, assignee: "   " },
+  ]) {
+    const response = await handleExtractTasks(request({ channelId }), createClient, async () => ({ tasks: [value] }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).tasks[0].assignee, null);
+  }
+});
+
+test("할 일: AI가 적은 기한 표현(due)을 근거 메시지 작성일(서울) 기준으로 코드가 날짜로 바꿈", async () => {
+  // 근거 메시지 10: 2026-11-23T01:00:00Z = 서울 2026-11-23(월) 10:00
+  const { createClient } = mockClient();
+  const cases = [
+    ["내일까지", "2026-11-24"], ["금요일까지", "2026-11-27"], ["다음 주 수요일 오후 2시", "2026-12-02"],
+    ["2026-11-30", "2026-11-30"], ["조만간", null], ["이번 주 안에", null], [null, null],
+  ];
+  for (const [due, expected] of cases) {
+    const response = await handleExtractTasks(request({ channelId }), createClient, async () => ({ tasks: [{
+      content: "배포 점검", assignee: "재문", due, messageIds: [10],
+    }] }));
+    assert.equal(response.status, 200, String(due));
+    assert.equal((await response.json()).tasks[0].dueDate, expected, String(due));
+  }
+});
+
+test("할 일: due 가 없고 이전 형식 dueDate(YYYY-MM-DD)만 와도 받아 주며, 둘 다 있으면 dueDate 우선", async () => {
+  const { createClient } = mockClient();
+  const legacy = await handleExtractTasks(request({ channelId }), createClient, async () => ({ tasks: [task] }));
+  assert.equal((await legacy.json()).tasks[0].dueDate, "2026-11-30");
+  const both = await handleExtractTasks(request({ channelId }), createClient, async () => ({ tasks: [{ ...task, due: "내일" }] }));
+  assert.equal((await both.json()).tasks[0].dueDate, "2026-11-30");
 });
 
 test("할 일: 빈 대화·너무 긴 대화는 추출 함수 호출 전에 안내", async () => {

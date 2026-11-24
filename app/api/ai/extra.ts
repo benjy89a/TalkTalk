@@ -11,11 +11,13 @@ export const EXTRACT_TIMEOUT_MS = 240000;
 /** 검색 해석의 max_tokens(추론 포함). 출력이 작아 기존 값을 유지한다. */
 export const SEARCH_MAX_TOKENS = 4096;
 /**
- * 할 일 추출의 max_tokens(추론 포함). 입력이 1,375토큰으로 작아도 3회 중 2회가 추론만으로 4,096을 다 써서 잘렸다(content 0자).
- * 6회 실측에서 필요량은 최대 5,208토큰이었다. 6,144를 모두 쓰는 최악의 경우도 실측 최저 속도(약 26토큰/초)로 약 236초라 240초 제한 안이지만 **여유는 4초뿐**이다.
- * 더 올리면 제한을 넘는다. 시간 초과(AI_TIMEOUT)가 늘면 이 값을 5,632 정도로 내리거나 대기 제한을 함께 검토한다.
+ * 할 일 추출의 max_tokens(추론 포함).
+ * 날짜 계산을 AI에서 코드로 옮기기 전(기존 프롬프트)에는 입력이 작아도 3회 중 2회가 추론만으로 4,096을 다 써서 잘렸고(content 0자),
+ * 6,144로 올리자 필요량이 4,743~5,208토큰으로 나왔다. 코드로 옮긴 뒤에는 3회 측정에서 2,003~3,135토큰으로 줄었다.
+ * 변동 여유를 두고 5,120으로 둔다(최대 관측치의 약 1.6배). 5,120을 모두 쓰는 최악의 경우도 실측 최저 속도(약 26토큰/초)로 약 197초라
+ * 240초 제한에 43초 여유가 있다. 잘림(AI_OUTPUT_TRUNCATED)이 다시 늘면 올리되 시간 제한(최저 속도 기준 약 6,000토큰)을 넘기지 않는다.
  */
-export const EXTRACT_MAX_TOKENS = 6144;
+export const EXTRACT_MAX_TOKENS = 5120;
 /** 할 일 추출 대화 개수: 기본 10개, 최대 25개. */
 export const EXTRACT_DEFAULT_MESSAGES = 10;
 export const EXTRACT_MAX_MESSAGES = 25;
@@ -251,10 +253,9 @@ export function createExaoneExtra({ apiKey, fetcher = fetch, timeoutMs }: Exaone
         throw new ExtraError(400, "INVALID_INPUT", "추출할 대화의 형식과 길이를 확인해 주세요.");
       }
       const value = await requestJson(
-        '대화에서 실행할 후속 작업만 최대 10개 추출하여 {"tasks":[{"content":string,"assignee":string|null,"dueDate":"YYYY-MM-DD"|null,"messageIds":number[]}]}로 반환한다. tasks 외의 최상위 필드는 금지한다. 내용은 80자 이내로 짧게 한 문장으로 쓰고 담당자는 실제 근거 본문에 등장하는 이름만 쓴다. 내가/제가 같은 대명사로 신원을 추측하거나 이름을 만들지 말고 불명확하면 null이다. 기한은 확실한 날짜만 쓴다. 내일/모레 등 상대 기한은 실행 시각이 아니라 해당 근거 메시지의 created_at을 서울 시간으로 해석한 dateInSeoul 기준이며 메시지에 다른 명시 날짜가 있으면 그것을 우선한다. 연도/날짜가 모호하면 null이다. messageIds는 제공된 실제 근거 ID만 1~3개다. 응답은 간결해야 하며 불필요한 설명은 쓰지 않는다. 인사·이미 완료된 일·불확실한 제안은 할 일로 만들지 않는다. 명확한 할 일이 없으면 tasks는 빈 배열이다. 업무를 저장하거나 사람에게 배정했다고 말하지 않는다.',
-        { ...context, messages: messages.map((message) => ({
-          ...message, dateInSeoul: new Date(Date.parse(message.created_at) + 9 * 3600000).toISOString().slice(0, 10),
-        })) }, signal, EXTRACT_TIMEOUT_MS, EXTRACT_MAX_TOKENS,
+        // 추론(생각) 토큰을 줄이려고 규칙을 짧게 하고, 날짜 계산(dueDate.ts)·담당자 검증(validateTasks)은 코드가 맡는다.
+        '대화에서 실행할 후속 작업만 최대 10개 추출해 {"tasks":[{"content":string,"assignee":string|null,"due":string|null,"messageIds":number[]}]} JSON 하나로만 답한다. 다른 필드·설명 금지. content는 80자 이내 한 문장. assignee는 본문에 나온 이름만 쓰고 모르면 null. due는 기한이 본문에 적혀 있을 때만 그 표현을 원문 그대로 옮기되(예: "금요일까지", "내일 오후 3시"), 앞뒤 문장에 "다음 주"처럼 기한의 주를 정해 주는 말이 있으면 함께 붙여 적는다(예: "다음 주 목요일 회의 전까지"). 날짜로 계산하지 않으며, 기한이 없으면 null. messageIds는 근거 메시지 ID 1~3개. 인사·이미 끝난 일·불확실한 제안은 제외하고 없으면 tasks는 빈 배열.',
+        { messages: messages.map((message) => ({ id: message.id, content: message.content })) }, signal, EXTRACT_TIMEOUT_MS, EXTRACT_MAX_TOKENS,
       );
       return { tasks: validateTasks(value, messages) };
     },
@@ -335,24 +336,129 @@ function dateOnly(value: unknown): string | null {
   return value;
 }
 
+// ───────── 기한 표현 → 날짜 ─────────
+// 한국어 기한 표현("금요일까지", "내일 오후 3시", "다음 주 수요일")을 서울 기준 날짜(YYYY-MM-DD)로 바꾼다.
+// AI가 요일·상대 날짜를 직접 계산하느라 생각 토큰을 쓰지 않게, 계산은 이 코드가 맡는다(결정적·테스트 가능).
+// 기준일은 그 기한이 적힌 근거 메시지의 작성 시각(서울)이다. 모호하면 추측하지 않고 null을 돌려준다.
+// (확장자 없는 import와 node --test가 함께 쓰이도록 별도 파일 대신 이 파일에 둔다.)
+
+const DUE_DAY = 86400000;
+const DUE_WEEKDAYS = "일월화수목금토"; // Date#getUTCDay()와 같은 순서(일=0)
+
+type DueYmd = { y: number; m: number; d: number };
+
+function dueSeoulYmd(iso: string): DueYmd | null {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return null;
+  const seoul = new Date(time + 9 * 3600000);
+  return { y: seoul.getUTCFullYear(), m: seoul.getUTCMonth() + 1, d: seoul.getUTCDate() };
+}
+
+/** 실제로 존재하는 날짜면 UTC 자정 ms, 아니면 null (2월 30일 등 거절). */
+function dueValidDate(y: number, m: number, d: number): number | null {
+  const ms = Date.UTC(y, m - 1, d);
+  const date = new Date(ms);
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d ? ms : null;
+}
+
+const dueFormat = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * @param text      기한 표현 원문 (예: "금요일까지", "2026-11-25", "다음 주 수요일 오후 2시")
+ * @param createdAt 기한이 적힌 메시지의 작성 시각(ISO). 상대 표현의 기준일
+ * @returns YYYY-MM-DD, 해석할 수 없거나 모호하면 null
+ */
+export function resolveDueDate(text: string, createdAt: string): string | null {
+  const base = dueSeoulYmd(createdAt);
+  if (!base) return null;
+  const baseMs = Date.UTC(base.y, base.m - 1, base.d);
+  const baseDow = new Date(baseMs).getUTCDay();
+  const s = text.normalize("NFC").replace(/\s+/g, " ").trim();
+  if (!s || s.length > 100) return null;
+
+  // 1) 연도가 있는 날짜: 2026-11-25 · 2026.11.25 · 2026/11/25 · 2026년 11월 25일
+  let m = /(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/.exec(s);
+  if (m) {
+    const ms = dueValidDate(Number(m[1]), Number(m[2]), Number(m[3]));
+    return ms === null ? null : dueFormat(ms);
+  }
+
+  // 2) 이번 달/다음 달/다다음 달 N일
+  m = /(다다음|다음|이번)\s*달\s*(\d{1,2})\s*일/.exec(s);
+  if (m) {
+    const offset = m[1] === "다다음" ? 2 : m[1] === "다음" ? 1 : 0;
+    const month0 = base.m - 1 + offset;
+    const ms = dueValidDate(base.y + Math.floor(month0 / 12), (month0 % 12) + 1, Number(m[2]));
+    return ms === null ? null : dueFormat(ms);
+  }
+
+  // 3) 연도 없는 N월 N일 — 올해로 보되 이미 지난 날짜면 모호하므로 null
+  m = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(s);
+  if (m) {
+    const ms = dueValidDate(base.y, Number(m[1]), Number(m[2]));
+    return ms === null || ms < baseMs ? null : dueFormat(ms);
+  }
+
+  // 4) 이번 주/다음 주/다다음 주 X요일 (주는 월요일 시작)
+  m = /(다다음|다음|이번)\s*주\s*([월화수목금토일])\s*요일/.exec(s);
+  if (m) {
+    const weeks = m[1] === "다다음" ? 2 : m[1] === "다음" ? 1 : 0;
+    const monday = baseMs - ((baseDow + 6) % 7) * DUE_DAY;
+    const index = (DUE_WEEKDAYS.indexOf(m[2]) + 6) % 7;
+    return dueFormat(monday + (weeks * 7 + index) * DUE_DAY);
+  }
+
+  // 5) N일 후/뒤, N주(일) 후/뒤
+  m = /(\d{1,3})\s*주(?:일)?\s*(?:후|뒤)/.exec(s);
+  if (m) return dueFormat(baseMs + Number(m[1]) * 7 * DUE_DAY);
+  m = /(\d{1,3})\s*일\s*(?:후|뒤)/.exec(s);
+  if (m) return dueFormat(baseMs + Number(m[1]) * DUE_DAY);
+
+  // 6) 오늘/내일/모레/글피 (내일모레는 모레, 긴 표현을 먼저 검사)
+  for (const [word, days] of [["글피", 3], ["내일모레", 2], ["모레", 2], ["내일", 1], ["오늘", 0]] as const) {
+    if (s.includes(word)) return dueFormat(baseMs + days * DUE_DAY);
+  }
+
+  // 7) 요일만 있는 표현: 앞으로 오는 가장 가까운 그 요일. 작성한 날과 같은 요일이면 오늘인지 다음 주인지 모호해 null.
+  //    한계: 다른 문장의 "다음 주" 문맥은 알 수 없다 → 프롬프트가 AI에게 그런 수식어를 due 에 함께 적게 한다.
+  m = /([월화수목금토일])\s*요일/.exec(s);
+  if (m) {
+    const diff = (DUE_WEEKDAYS.indexOf(m[1]) - baseDow + 7) % 7;
+    return diff === 0 ? null : dueFormat(baseMs + diff * DUE_DAY);
+  }
+
+  return null; // "이번 주 안에", "조만간", "월말" 등은 날짜를 정할 수 없다
+}
+
 function validateTasks(value: unknown, messages: readonly TaskSource[]): ExtractedTask[] {
   if (!object(value) || !onlyKeys(value, ["tasks"]) || !Array.isArray(value.tasks) || value.tasks.length > 20) return invalidAi();
-  const source = new Map(messages.map((message) => [message.id, message.content]));
+  const source = new Map(messages.map((message) => [message.id, message]));
   return value.tasks.map((task: unknown) => {
-    if (!object(task) || !onlyKeys(task, ["content", "assignee", "dueDate", "messageIds"])
+    // due: 기한 표현 원문(코드가 날짜로 바꾼다). dueDate: 이미 계산된 YYYY-MM-DD(이전 응답 형식도 받아 준다)
+    if (!object(task) || !onlyKeys(task, ["content", "assignee", "due", "dueDate", "messageIds"])
       || typeof task.content !== "string" || !task.content.trim() || task.content.trim().length > 1000
       || !Array.isArray(task.messageIds) || !task.messageIds.length || task.messageIds.length > 10
       || task.messageIds.some((id) => !Number.isSafeInteger(id) || !source.has(id))) return invalidAi();
     const messageIds = [...new Set(task.messageIds as number[])];
     let assignee: string | null = null;
-    if (task.assignee !== null) {
-      if (typeof task.assignee !== "string" || !task.assignee.trim() || task.assignee.trim().length > 100) return invalidAi();
+    if (task.assignee !== null && task.assignee !== undefined) {
+      if (typeof task.assignee !== "string" || task.assignee.length > 100) return invalidAi();
       const name = task.assignee.trim();
-      // 원문에 없는 이름을 담당자로 지어내지 않는다. 모호하면 null을 사용한다.
-      if (!messageIds.some((id) => source.get(id)?.includes(name))) return invalidAi();
-      assignee = name;
+      // 원문에 없는 이름은 지어낸 것이므로 버리고 null로 둔다(응답 전체를 거절하지 않는다).
+      if (name && messageIds.some((id) => source.get(id)?.content.includes(name))) assignee = name;
     }
-    return { content: task.content.trim(), assignee, dueDate: dateOnly(task.dueDate), messageIds };
+    // due 의 형식은 dueDate 유무와 상관없이 항상 검사한다.
+    if (task.due !== undefined && task.due !== null && (typeof task.due !== "string" || task.due.length > 100)) return invalidAi();
+    let dueDate: string | null = null;
+    if (task.dueDate !== undefined) dueDate = dateOnly(task.dueDate);
+    if (dueDate === null && typeof task.due === "string") {
+      const phrase = task.due.trim();
+      // 기한 표현이 적힌 근거 메시지의 작성일을 기준으로 계산한다(없으면 첫 근거 메시지).
+      const evidence = messageIds.map((id) => source.get(id)!);
+      const holder = evidence.find((message) => message.content.includes(phrase)) ?? evidence[0];
+      dueDate = resolveDueDate(phrase, holder.created_at);
+    }
+    return { content: task.content.trim(), assignee, dueDate, messageIds };
   });
 }
 
