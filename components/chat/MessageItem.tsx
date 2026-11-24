@@ -10,8 +10,12 @@
 //                    보내는 중/실패 메시지는 아직 DB id 가 없으므로 그리지 않는다
 // 내 메시지(저장된 것)에 마우스를 올리면 "수정 · 삭제" → 수정은 말풍선 자리에서 바로 (Enter 저장 · Esc 취소)
 // 휴대폰(마우스 없는 기기): "마우스를 올리면 보이는" 버튼들은 빼고(자리도 안 차지 → 말풍선이 넓어짐),
-//   말풍선을 톡 누르면 아래에 "답글 · 반응 · 수정 · 삭제" 버튼 줄이 나온다 (컴퓨터에선 이 줄이 안 보임)
+//   말풍선을 톡 누르면 아래에 "답글 · 반응 · 답장 · 복사 · 수정 · 삭제" 버튼 줄이 나온다 (컴퓨터에선 이 줄이 안 보임)
+// 답장(onQuote): 입력창 위에 "○○님에게 답장" → 보내면 메시지 맨 앞에 "> 이름: 원문" 줄 (composer.ts). 말풍선 안에 인용 칸으로 그림
+// 복사: 말풍선 글(인용 줄 빼고)을 클립보드에 복사
+// ↑ 키 수정: 입력창이 비어 있을 때 ↑ 를 누르면 그 칸의 내 마지막 메시지가 수정 모드로 (composer.ts 의 수정 요청)
 import { useCallback, useRef, useState, type ReactNode } from "react";
+import { goToQuoted, splitQuote, useEditRequest, withQuote } from "./composer";
 import EmojiPicker, { useDismiss } from "./EmojiPicker";
 import { deleteMessage, editMessage } from "./messageActions";
 import { REACTION_EMOJIS, type ReactionSummary } from "./useReactions";
@@ -33,7 +37,26 @@ type Props = {
   // 이모지 반응 (추가 기능 ③): 말풍선 아래 "👍 2" 칩 + 마우스를 올리면 😊+ 로 고르기
   reactions?: ReactionSummary;
   onReact?: (emoji: string, alreadyMine: boolean) => void;
+  onQuote?: () => void; // "답장" — 이 메시지를 인용해서 답장
 };
+
+// 클립보드 복사. 클립보드 기능이 막힌 브라우저면 예전 방식(execCommand)으로 한 번 더 시도
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }
+}
 
 const BUBBLE = "min-w-0 rounded-2xl px-3 py-1.5 text-sm leading-6 whitespace-pre-wrap break-words";
 // Tailwind 4 의 group-hover 는 마우스가 있는 기기에서만 켜진다 → 휴대폰에선 그 버튼들을 아예 뺀다
@@ -53,6 +76,7 @@ export default function MessageItem({
   wide = false,
   reactions,
   onReact,
+  onQuote,
 }: Props) {
   // 말풍선 최대 폭: 채널 본문은 75%(카톡처럼), 좁은 스레드 패널은 92%
   // 휴대폰처럼 좁은 화면(sm 미만)에서는 카톡처럼 말풍선이 화면 끝까지 (반대쪽엔 시간 글자 자리만 남음)
@@ -87,6 +111,77 @@ export default function MessageItem({
   const [actionError, setActionError] = useState<string | null>(null); // 수정·삭제 실패 안내
   // 소프트 삭제된 메시지 (팀장님 005): 줄은 남고 내용은 비어 있음 → 카톡처럼 "삭제된 메시지입니다"
   const deleted = !status && !!message.deleted_at;
+  // ↑ 키 수정 요청 (composer.ts): 이 메시지가 대상이면 수정 모드로. 요청마다 번호가 달라서 한 번만 열린다
+  // (효과 안에서 상태를 바꾸지 않고, 그릴 때 "새 요청인지"만 비교 — React 권장 방식)
+  // 답장 인용 줄 (맨 앞 "> 이름: 원문") 과 본문 — 수정할 때도 본문만 고치고 인용은 그대로 둔다
+  const { quote, body } = splitQuote(message.content);
+  const editReq = useEditRequest();
+  const [seenEditNonce, setSeenEditNonce] = useState(editReq?.nonce);
+  if (editReq && editReq.nonce !== seenEditNonce) {
+    setSeenEditNonce(editReq.nonce);
+    if (editReq.messageId === message.id && mine && !status && !deleted && !editing) {
+      setActionError(null);
+      setConfirming(false);
+      setDraft(body);
+      setEditing(true);
+    }
+  }
+  // 카톡 "답장"처럼: 말풍선 맨 위에 "○○에게 답장" + 원문 한 줄(흐리게), 그 아래 "↳ 내 답장" (ㄴ> 모양 화살표로 이어짐)
+  // 인용 칸을 누르면 원래 글 위치로 이동 + 잠깐 노랗게 (composer.ts goToQuoted → focus.ts)
+  const [finding, setFinding] = useState(false);
+  async function openQuoted() {
+    if (!quote || finding || status) return;
+    setFinding(true);
+    setActionError(null);
+    const ok = await goToQuoted(message.channel_id, message.id, quote);
+    setFinding(false);
+    if (!ok) setActionError("원래 메시지를 찾지 못했어요. 삭제됐거나 내용이 바뀌었을 수 있어요.");
+  }
+  const quoteBlock = quote ? (
+    <span
+      role="button"
+      tabIndex={status ? -1 : 0}
+      title="원래 메시지로 이동"
+      aria-label={`${quote.name}의 원래 메시지로 이동: ${quote.text}`}
+      onClick={(e) => {
+        e.stopPropagation(); // 휴대폰에서 말풍선 톡(버튼 줄 열기)과 겹치지 않게
+        openQuoted();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openQuoted();
+        }
+      }}
+      className={`mb-1 block min-w-36 cursor-pointer rounded-lg px-2 py-1 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+        mine ? "bg-white/10 hover:bg-white/20 focus-visible:ring-white/70" : "bg-gray-200/70 hover:bg-gray-300/70 focus-visible:ring-[#1e325c]"
+      } ${finding ? "opacity-60" : ""}`}
+    >
+      <span className={`block text-xs leading-5 font-semibold ${mine ? "text-white" : "text-gray-900"}`}>
+        {quote.name}에게 답장
+      </span>
+      <span className={`block truncate text-xs leading-5 ${mine ? "text-white/65" : "text-gray-500"}`}>{quote.text}</span>
+    </span>
+  ) : null;
+  const bubbleBody = (onDark: boolean) =>
+    quote ? (
+      <span className="flex gap-1">
+        <span aria-hidden className={`shrink-0 font-semibold ${onDark ? "text-white/70" : "text-gray-500"}`}>
+          ↳
+        </span>
+        <span className="min-w-0">{formatText(body, onDark)}</span>
+      </span>
+    ) : (
+      formatText(body, onDark)
+    );
+  // 복사 (잠깐 "복사했어요" 안내)
+  const [copied, setCopied] = useState(false);
+  async function copyMessage() {
+    const ok = await copyText(body);
+    if (!ok) return setActionError("복사하지 못했어요. 글을 길게 눌러 직접 복사해 주세요.");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
   const deletedBubble = (
     <p className={`${BUBBLE} border border-gray-200 bg-white text-gray-400 italic`}>삭제된 메시지입니다</p>
   );
@@ -94,9 +189,10 @@ export default function MessageItem({
   async function saveEdit() {
     const next = draft.trim();
     if (!next || busy) return;
-    if (next === message.content) return setEditing(false);
+    const content = withQuote(quote ?? undefined, next); // 인용 줄은 그대로 붙여서 저장
+    if (content === message.content) return setEditing(false);
     setBusy(true);
-    const ok = await editMessage(message.id, next);
+    const ok = await editMessage(message.id, content);
     setBusy(false);
     if (ok) setEditing(false);
     else setActionError("메시지를 수정하지 못했어요. 잠시 후 다시 시도해 주세요.");
@@ -122,7 +218,7 @@ export default function MessageItem({
           type="button"
           onClick={() => {
             setActionError(null);
-            setDraft(message.content);
+            setDraft(body);
             setEditing(true);
           }}
           className="rounded px-1 hover:text-[#1e325c]"
@@ -138,6 +234,21 @@ export default function MessageItem({
           className="rounded px-1 hover:text-red-600"
         >
           삭제
+        </button>
+      </span>
+    ) : null;
+
+  // 저장된 메시지 모두: 마우스를 올리면 보이는 "답장 · 복사"
+  const extraActions =
+    !status && !editing && !deleted && !confirming ? (
+      <span className={`invisible flex shrink-0 gap-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible focus-within:visible ${HOVER_ONLY}`}>
+        {onQuote && (
+          <button type="button" onClick={onQuote} className="rounded px-1 hover:text-[#1e325c]">
+            답장
+          </button>
+        )}
+        <button type="button" onClick={copyMessage} className="rounded px-1 hover:text-[#1e325c]">
+          {copied ? "복사됨 ✓" : "복사"}
         </button>
       </span>
     ) : null;
@@ -312,6 +423,11 @@ export default function MessageItem({
         </span>
       </div>
     ) : null;
+  const copiedLine = copied ? (
+    <p role="status" className={`mt-1 text-[11px] leading-4 text-gray-500 ${TOUCH_ONLY}`}>
+      복사했어요
+    </p>
+  ) : null;
   const errorLine = actionError ? (
     <p role="alert" className="mt-1 text-[11px] leading-4 text-red-600">
       {actionError}
@@ -320,18 +436,22 @@ export default function MessageItem({
 
   // 휴대폰: 말풍선을 톡 누르면 나오는 버튼 줄 (손가락으로 누르기 좋게 크게)
   const canTap = !status && !deleted && !editing && !confirming;
-  type TapKey = "reply" | "react" | "edit" | "delete";
+  type TapKey = "reply" | "react" | "quote" | "copy" | "edit" | "delete";
   const tapButtons: { key: TapKey; label: string }[] = [];
   if (canTap && onOpenThread) tapButtons.push({ key: "reply", label: hasReplies ? `답글 ${thread.count}개` : "답글" });
   if (canTap && canReact) tapButtons.push({ key: "react", label: "😊 반응" });
+  if (canTap && onQuote) tapButtons.push({ key: "quote", label: "답장" });
+  if (canTap) tapButtons.push({ key: "copy", label: "복사" });
   if (canTap && mine) tapButtons.push({ key: "edit", label: "수정" }, { key: "delete", label: "삭제" });
   function runTap(key: TapKey) {
     setTapOpen(false);
     setActionError(null);
     if (key === "reply") onOpenThread?.();
     else if (key === "react") openPicker("quick");
+    else if (key === "quote") onQuote?.();
+    else if (key === "copy") copyMessage();
     else if (key === "edit") {
-      setDraft(message.content);
+      setDraft(body);
       setEditing(true);
     } else setConfirming(true);
   }
@@ -370,6 +490,7 @@ export default function MessageItem({
       <div ref={wrapRef} className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
         <div ref={rowRef} className={`relative flex ${maxW} items-end gap-1.5`}>
           {picker}
+          {extraActions}
           {ownActions}
           {reactButton}
           {replyButton}
@@ -411,11 +532,13 @@ export default function MessageItem({
               aria-busy={status === "sending" || undefined}
               onClick={onBubbleTap}
             >
-              {formatText(message.content, true)}
+              {quoteBlock}
+              {bubbleBody(true)}
             </p>
           )}
         </div>
         {tapBar}
+        {copiedLine}
         {confirmBar}
         {errorLine}
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
@@ -446,14 +569,18 @@ export default function MessageItem({
             deletedBubble
           ) : (
             <p className={`${BUBBLE} bg-gray-100 text-gray-900`} onClick={onBubbleTap}>
-              {formatText(message.content, false)}
+              {quoteBlock}
+              {bubbleBody(false)}
             </p>
           )}
           {side}
           {reactButton}
           {replyButton}
+          {extraActions}
         </div>
         {tapBar}
+        {copiedLine}
+        {errorLine}
         {attachments && <div className={`mt-1 ${maxW}`}>{attachments}</div>}
         {reactionChips}
         {replyLink}

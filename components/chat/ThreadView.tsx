@@ -5,7 +5,8 @@
 //   → 스레드 패널 바깥을 클릭하거나 Esc 를 누르면 닫힌다 (멘션 목록이 열려 있으면 Esc 는 목록만 닫음)
 //     (다른 메시지의 "답글" 버튼[data-thread-trigger]을 누르면 닫지 않고 그 스레드로 바뀐다)
 import { useEffect, useMemo, useRef } from "react";
-import { CenterText, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
+import { CenterText, LostBanner, NewMessagesButton, RetryButton, ScrollDownButton } from "./ChatBits";
+import { composerScope } from "./composer";
 import MessageInput from "./MessageInput";
 import MessageItem from "./MessageItem";
 import MessageRows from "./MessageRows";
@@ -78,7 +79,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     if (myId) toggleReaction(messageId, emoji, myId, alreadyMine);
   };
 
-  const { scrollRef, contentRef, onScroll, scrollToBottom, scrollToMessage, unseen } = useStickToBottom(
+  const { scrollRef, contentRef, onScroll, scrollToBottom, scrollToMessage, unseen, atBottom } = useStickToBottom(
     replies,
     status === "ready",
     String(rootId),
@@ -156,6 +157,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               <MessageRows
                 messages={replies}
                 myId={myId}
+                scope={composerScope(channelId, rootId)}
                 wide
                 reactions={reactions}
                 onReact={onReact}
@@ -163,6 +165,7 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
             </div>
           </div>
           <NewMessagesButton count={unseen} onClick={scrollToBottom} />
+          <ScrollDownButton show={!atBottom && unseen === 0} onClick={scrollToBottom} />
         </div>
       )}
 

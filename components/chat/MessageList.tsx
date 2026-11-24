@@ -8,7 +8,8 @@
 //   focusMessageId?             — 이 메시지로 스크롤 + 잠깐 강조 (E 검색 연동). focus.ts 의 focusMessage() 로 불러도 같음
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMarkAsRead } from "@/components/notifications/useMarkAsRead";
-import { CenterText, InfoBanner, JumpToLatestButton, LostBanner, NewMessagesButton, RetryButton } from "./ChatBits";
+import { CenterText, InfoBanner, JumpToLatestButton, LostBanner, NewMessagesButton, RetryButton, ScrollDownButton } from "./ChatBits";
+import { composerScope } from "./composer";
 import { clearListFocus, focusMessage, useListFocus } from "./focus";
 import MessageRows from "./MessageRows";
 import { mergeWithOutbox, useOutbox, type DisplayMessage } from "./outbox";
@@ -177,6 +178,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
             <MessageRows
               messages={messages}
               myId={myId}
+              scope={composerScope(channelId, null)}
               replyStats={replyStats}
               onOpenThread={(rootId) => {
                 openThread(channelId, rootId);
@@ -194,6 +196,8 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
 
       {/* 예전 구간을 보는 중이면 "최신 메시지로" (최신 50개를 다시 불러옴), 아니면 "새 메시지 n개" */}
       {detached ? <JumpToLatestButton onClick={reload} /> : <NewMessagesButton count={unseen} onClick={scrollToBottom} />}
+      {/* 위로 올려 보는 중이면 오른쪽 아래 동그란 ↓ (카톡처럼) */}
+      <ScrollDownButton show={!detached && !atBottom && unseen === 0 && messages.length > 0} onClick={scrollToBottom} />
     </div>
   );
 }
