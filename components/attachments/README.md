@@ -38,7 +38,7 @@ import { renderMessageAttachments } from "@/components/attachments/AttachmentLis
 - Supabase Storage 경로에는 한글·띄어쓰기를 쓸 수 없어서 **경로의 파일이름은 영문·숫자로 바꿔** 저장합니다.
   원래 이름은 `attachments.file_name` 에 그대로 저장되어 화면·다운로드에는 원래 이름이 보입니다.
 - `file_url` 에는 Storage 경로를 저장하고, 보여줄 때 `createSignedUrls` 로 1시간짜리 임시 주소를 만듭니다.
-- 파일을 하나도 못 올리면 만든 "📎" 메시지는 지웁니다.
+- 파일을 하나도 못 올리면 만든 "📎" 메시지는 `soft_delete_message` 로 지웁니다 (팀 규칙 005).
 
 ## 테스트
 

@@ -7,13 +7,15 @@ import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
 import { markAsRead, READ_EVENT, type ReadEventDetail } from "./markAsRead";
 import { escapeLike, mentionsName } from "./mentions";
+import {
+  applyInsert,
+  applyRead,
+  applyUpdate,
+  MAX_MENTIONS,
+  type ChannelReadState,
+} from "./unreadRules";
 
-// 채널 하나의 상태
-export type ChannelReadState = {
-  lastReadId: number; // 내가 어디까지 읽었는지 (기록 없으면 0)
-  latestId: number; // 가장 최근 본문 메시지 id (없으면 0)
-  mentionIds: number[]; // 안 읽은 메시지 중 나를 멘션한 메시지 id 들
-};
+export type { ChannelReadState };
 
 export type UnreadSnapshot = {
   myId: string | null;
@@ -22,7 +24,6 @@ export type UnreadSnapshot = {
 };
 
 const EMPTY: UnreadSnapshot = { myId: null, myName: null, channels: {} };
-const MAX_MENTIONS = 100; // 배지는 99+ 까지만 보여주므로 그 이상은 세지 않는다
 
 let state: UnreadSnapshot = EMPTY;
 const listeners = new Set<() => void>();
@@ -75,17 +76,7 @@ export async function refreshUnread() {
   const myName = me?.name?.trim() || null;
 
   // 채널 수만큼 작은 요청을 동시에 보낸다
-  async function latestId(channelId: string) {
-    const { data } = await supabase
-      .from("messages")
-      .select("id")
-      .eq("channel_id", channelId)
-      .is("parent_id", null)
-      .order("id", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return data?.id ?? 0;
-  }
+  const latestId = fetchLatestId;
 
   async function mentionIds(channelId: string, lastReadId: number) {
     if (!myName) return [];
@@ -94,6 +85,7 @@ export async function refreshUnread() {
       .select("id")
       .eq("channel_id", channelId)
       .is("parent_id", null)
+      .is("deleted_at", null) // 삭제된 메시지는 세지 않음
       .gt("id", lastReadId)
       .neq("user_id", uid!)
       .ilike("content", `%@${escapeLike(myName)}%`)
@@ -118,7 +110,29 @@ export async function refreshUnread() {
   setState({ myId: uid, myName, channels: Object.fromEntries(rows) });
 }
 
-// ---- 새 메시지 (Realtime) ----
+// 삭제되지 않은 가장 최근 본문 메시지 id
+async function fetchLatestId(channelId: string) {
+  const { data } = await createClient()
+    .from("messages")
+    .select("id")
+    .eq("channel_id", channelId)
+    .is("parent_id", null)
+    .is("deleted_at", null)
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? 0;
+}
+
+function isMine(row: Message) {
+  return row.user_id === state.myId;
+}
+
+function mentionsMe(row: Message) {
+  return !isMine(row) && !!state.myName && mentionsName(row.content, state.myName);
+}
+
+// ---- 새 메시지 (Realtime INSERT) ----
 function onNewMessage(row: Message) {
   if (row.parent_id !== null) return; // 스레드 답글은 세지 않음
 
@@ -128,36 +142,36 @@ function onNewMessage(row: Message) {
     return;
   }
 
-  const mine = row.user_id === state.myId;
-  const mentioned = !mine && !!state.myName && mentionsName(row.content, state.myName);
-
-  updateChannel(row.channel_id, (cur) => ({
-    latestId: Math.max(cur.latestId, row.id),
-    // 내가 보낸 메시지는 읽은 것으로 본다 → 그 앞의 멘션도 읽은 것
-    lastReadId: mine ? Math.max(cur.lastReadId, row.id) : cur.lastReadId,
-    mentionIds: mine
-      ? cur.mentionIds.filter((id) => id > row.id)
-      : mentioned && !cur.mentionIds.includes(row.id) && cur.mentionIds.length < MAX_MENTIONS
-        ? [...cur.mentionIds, row.id]
-        : cur.mentionIds,
-  }));
+  const mine = isMine(row);
+  updateChannel(row.channel_id, (cur) => applyInsert(cur, row, mine, mentionsMe(row)));
 
   // 내가 보낸 메시지까지는 DB 에도 읽음으로 저장 (새로고침·다른 기기에서도 굵게 안 보이게)
   if (mine) void markAsRead(row.channel_id, row.id);
 }
 
+// ---- 메시지 수정·삭제 (Realtime UPDATE — 삭제도 deleted_at 이 채워진 UPDATE 로 온다) ----
+function onMessageUpdated(row: Message) {
+  const cur = state.channels[row.channel_id];
+  if (!cur) return;
+
+  const { next, needLatest } = applyUpdate(cur, row, isMine(row), mentionsMe(row));
+  updateChannel(row.channel_id, () => next);
+
+  // 가장 최근 메시지가 지워졌으면, 남은 메시지 중 가장 최근 것을 DB 에서 다시 읽어 굵게 여부를 정한다
+  if (needLatest) {
+    void fetchLatestId(row.channel_id).then((latest) => {
+      updateChannel(row.channel_id, (c) =>
+        // 그사이 새 메시지가 왔으면 그 값을 지킨다
+        c.latestId > row.id || c.latestId === latest ? c : { ...c, latestId: latest },
+      );
+    });
+  }
+}
+
 // ---- 읽음 처리 신호 (markAsRead 가 보냄) ----
 function onRead(e: Event) {
   const { channelId, lastReadMessageId } = (e as CustomEvent<ReadEventDetail>).detail;
-  updateChannel(channelId, (cur) =>
-    cur.lastReadId >= lastReadMessageId
-      ? cur
-      : {
-          ...cur,
-          lastReadId: lastReadMessageId,
-          mentionIds: cur.mentionIds.filter((id) => id > lastReadMessageId),
-        },
-  );
+  updateChannel(channelId, (cur) => applyRead(cur, lastReadMessageId));
 }
 
 // ---- 화면에서 처음 쓰기 시작할 때 켜고, 아무도 안 쓰면 끈다 ----
@@ -170,6 +184,9 @@ function start() {
     .channel(`unread:${crypto.randomUUID()}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) =>
       onNewMessage(payload.new as Message),
+    )
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) =>
+      onMessageUpdated(payload.new as Message),
     )
     .subscribe();
 
