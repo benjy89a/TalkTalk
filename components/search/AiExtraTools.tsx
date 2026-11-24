@@ -1,23 +1,29 @@
 "use client";
 // 사용 예: <AiExtraTools channelId={선택한채널id} />. AiToolsBar 안에 포함된다.
-// 현재 채널만 검색한다. 메시지 위치 이동·DB 업무 저장·자동 배정은 하지 않는다.
+// 현재 채널만 검색한다. DB 업무 저장·자동 배정은 하지 않는다.
+// onSelectMessage 를 받으면 결과 메시지·할 일 근거 번호를 눌러 그 메시지로 이동을 요청한다 (실제 스크롤은 B·팀장).
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useCancelOnSignOut } from "./useCancelOnSignOut";
 import { AiExtraRequestError, requestExtractTasks, requestNaturalSearch, type AiSearchResult, type AiTaskResult } from "./extraClient";
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 
-type Props = { channelId: string | null; requestGate?: AiRequestGate };
+type Props = {
+  channelId: string | null;
+  requestGate?: AiRequestGate;
+  /** 결과 메시지를 누르면 호출. 없으면 결과는 눌러지지 않는다 (CONTRACTS.md 3번). */
+  onSelectMessage?: (channelId: string, messageId: number) => void;
+};
 type Kind = "search" | "tasks";
 type State = { status: "idle" } | { status: "loading"; kind: Kind }
   | { status: "search"; result: AiSearchResult } | { status: "tasks"; result: AiTaskResult }
   | { status: "error"; message: string };
 
-export default function AiExtraTools({ channelId, requestGate }: Props) {
-  return <ChannelExtraTools key={channelId ?? "no-channel"} channelId={channelId} requestGate={requestGate} />;
+export default function AiExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
+  return <ChannelExtraTools key={channelId ?? "no-channel"} channelId={channelId} requestGate={requestGate} onSelectMessage={onSelectMessage} />;
 }
 
-function ChannelExtraTools({ channelId, requestGate }: Props) {
+function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(25);
   const [state, setState] = useState<State>({ status: "idle" });
@@ -115,12 +121,22 @@ function ChannelExtraTools({ channelId, requestGate }: Props) {
           </p>
           {!state.result.messages.length && <p className="text-gray-600">조건에 맞는 대화가 없습니다. 해석된 조건을 확인하거나 질문을 바꿔 주세요.</p>}
           <ul className="max-h-80 space-y-2 overflow-y-auto">
-            {state.result.messages.map((message) => <li key={message.id} className="rounded-md border border-gray-200 p-3">
-              <p className="line-clamp-4 whitespace-pre-wrap break-words leading-6">{message.content}</p>
-              <p className="mt-1 text-xs text-gray-600">메시지 #{message.id}{message.parent_id !== null && " · 스레드 답글"}{" · "}
-                <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time>
-              </p>
-            </li>)}
+            {state.result.messages.map((message) => {
+              const body = <>
+                <span className="line-clamp-4 block whitespace-pre-wrap break-words leading-6">{message.content}</span>
+                <span className="mt-1 block text-xs text-gray-600">메시지 #{message.id}{message.parent_id !== null && " · 스레드 답글"}{" · "}
+                  <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time>
+                  {onSelectMessage && " · 눌러서 채팅에서 보기"}
+                </span>
+              </>;
+              return <li key={message.id}>
+                {onSelectMessage && channelId
+                  ? <button type="button" onClick={() => onSelectMessage(channelId, message.id)}
+                    aria-label={`메시지 #${message.id} 위치로 이동`}
+                    className="block w-full rounded-md border border-gray-200 p-3 text-left hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">{body}</button>
+                  : <div className="rounded-md border border-gray-200 p-3">{body}</div>}
+              </li>;
+            })}
           </ul>
         </div>
       )}
@@ -133,7 +149,15 @@ function ChannelExtraTools({ channelId, requestGate }: Props) {
             {state.result.tasks.map((task, index) => <li key={index} className="space-y-1 rounded-md border border-gray-200 p-3">
               <p className="whitespace-pre-wrap break-words font-medium">{task.content}</p>
               <p className="break-words text-gray-600">담당자: {task.assignee ?? "미정"}{" · 기한: "}{task.dueDate ?? "미정"}</p>
-              <p className="text-xs text-gray-600">근거 메시지: {task.messageIds.map((id) => `#${id}`).join(", ")}</p>
+              <p className="text-xs text-gray-600">근거 메시지:{" "}
+                {task.messageIds.map((id, i) => <span key={id}>{i > 0 && ", "}
+                  {onSelectMessage && channelId
+                    ? <button type="button" onClick={() => onSelectMessage(channelId, id)}
+                      aria-label={`근거 메시지 #${id} 위치로 이동`}
+                      className="rounded px-1 text-[#1e325c] underline hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">#{id}</button>
+                    : `#${id}`}
+                </span>)}
+              </p>
             </li>)}
           </ul>
         </div>
