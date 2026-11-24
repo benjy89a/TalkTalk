@@ -142,3 +142,46 @@ export function AiToolsSlot() {
 - **정확도 확인:** 요약문의 "누가 무엇을" 주장 약 14건(담당·제안·참석·링크 공유 등)을 입력 대화의 실제 화자와 대조했고 모두 일치했다. 표본이 작아 오귀속이 없다는 보장은 아니며, 화면은 "AI 결과는 틀릴 수 있습니다. 원문 대화를 함께 확인해 주세요."를 안내한다.
 - **한계:** 표본 3회, 입력은 지어낸 짧은 한 줄 메시지 50개. 실제 대화(긴 메시지·여러 주제·같은 이름의 다른 사람)에서의 정확도와 생각 길이는 다를 수 있다. 같은 이름의 사람이 둘이면 AI가 구분하지 못할 수 있다.
 
+
+## AI 제공업체 선택: EXAONE / Gemini (`AI_PROVIDER`)
+
+서버 환경변수 `AI_PROVIDER`로 AI 제공업체를 고른다. **설정이 없으면 지금까지와 똑같이 EXAONE**이다(팀장 요청 11/24). 팀장님이 배포를 Gemini로 바꿔 팀 전체가 테스트할 수 있다.
+
+| 환경변수 | 값 | 설명 |
+|---|---|---|
+| `AI_PROVIDER` | 비움 · `exaone` · (그 밖의 값) | EXAONE (기존 동작, 키 `EXAONE_API_KEY`) |
+| | `gemini` (대소문자·앞뒤 공백 무시) | Gemini (키 `GEMINI_API_KEY`) |
+| `GEMINI_API_KEY` | 키 | Gemini 선택 시에만 읽는다. **Gemini를 골랐는데 이 키가 없으면 EXAONE 키로 대신 호출하지 않고** "서버의 GEMINI_API_KEY 설정을 확인해 주세요" 안내 |
+| `GEMINI_MODEL` | 모델 ID (선택) | 없거나 형식이 이상하면 기본 `gemini-3.5-flash-lite`. 영문·숫자·`.`·`_`·`-`만 허용(최대 64자) |
+
+- **Vercel에 넣을 값:** `AI_PROVIDER=gemini`, `GEMINI_API_KEY=<키>`, (선택) `GEMINI_MODEL`. 환경변수를 바꾼 뒤에는 **다시 배포**해야 적용된다. `.env.example`·`package.json`·Vercel 설정은 팀장 담당이라 이 작업에서 바꾸지 않았다.
+- **EXAONE으로 되돌리기:** `AI_PROVIDER`를 지우거나 `exaone`으로 바꾸고 다시 배포.
+
+### 코드 구조
+- `app/api/ai/provider.ts` — 주소·모델·키 환경변수 이름·표시 이름·옵션을 **한 파일**에 모은다. `resolveAiProvider()`가 환경변수로 고르고, `stripCodeFence()`가 JSON 코드블록을 벗긴다. 키 값은 설정 객체에 넣지 않는다.
+- `summarize/handler.ts`(요약)·`extra.ts`(검색 해석·할 일 추출)의 어댑터는 `provider` 옵션을 받는다. **안 넘기면 기존 EXAONE 설정으로 동작**(기본값은 `provider.ts`의 `EXAONE_CONFIG`와 같아야 하며 테스트가 확인). route 4개(`summarize`·`search`·`tasks`·`status`)는 `resolveAiProvider()` 결과를 넘긴다. `createAiSummary`/`createAiExtra`는 기존 `createExaoneSummary`/`createExaoneExtra`의 별칭이다.
+- 오류 문구와 관리자 상태의 업체 이름이 실제 업체를 가리킨다("Gemini 호출 한도에 도달했습니다" 등).
+- **화면 안내문**("선택한 범위의 대화가 외부 AI 서비스(Gemini)로 전송됩니다")은 `GET /api/ai/status?view=public`에서 업체 **이름만** 받아 채운다. 로그인한 누구나 읽을 수 있고 키 설정 여부·키 이름은 관리자에게만 보인다. 받기 전이나 실패 시에는 "외부 AI 서비스"로 보인다. 관리자 AI 설정 탭은 키 환경변수 이름(`GEMINI_API_KEY` 등)을 보여 준다.
+
+### Gemini 호출 방식과 처리한 차이 (OpenAI 호환 주소)
+- 주소 `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`, `Authorization: Bearer 키`, 요청 형식은 EXAONE과 같은 채팅 완성(비스트리밍). 문서상 이 호환 주소는 **베타**다.
+- **`reasoning_effort`는 Gemini에 보내지 않는다.** 모델마다 허용 값이 달라 거절될 위험이 있어서이고, 모델 기본 생각 수준을 따른다(`gemini-3.5-flash-lite` 기본은 minimal).
+- **JSON 코드블록:** Gemini는 JSON을 ```json 블록으로 감싸 보낼 수 있어, Gemini 설정에서만 블록 하나로 감싼 응답은 안쪽을 읽는다(설명 글이 섞이면 형식 오류). EXAONE은 기존처럼 코드블록을 거절한다.
+- **안전 필터:** 종료 사유가 `content_filter`이면 형식 오류가 아니라 `AI_CONTENT_FILTERED`("AI 서비스(Gemini)가 이 내용에는 응답하지 않았습니다…")로 안내한다. 문서에 응답 모양이 없어 종료 사유 값으로만 구분한다.
+- 잘림(`length`)·빈 본문·429·401/403은 EXAONE과 같은 처리.
+- **생각 토큰과 `max_tokens`:** 문서상 Gemini도 생각 토큰이 최대 출력 한도에 포함된다. 기본 모델은 생각이 적어 한도를 EXAONE과 **같게 두었다**(요약 4,096·추출 5,120·검색 4,096, 대기 240초). 실제 호출로 잘림이 나면 Gemini 한도를 따로 정한다.
+
+### 기본 모델 `gemini-3.5-flash-lite` 선택 근거 (AI Studio 문서, 2026-11-24 확인)
+- Flash-Lite 3.5는 **안정(Stable)** 이고 "3.5 세대에서 가장 빠르고 비용 효율적인 모델"로 소개된다. 문서가 새 프로젝트에 "Gemini 4 Hydrogen 또는 3.5 Flash-Lite"를 권장한다.
+- `gemini-2.5-flash`는 2026-12-01부터 `gemini-3.5-flash-lite`로 자동 전환될 예정이라 처음부터 이 ID를 쓴다. 더 높은 품질이 필요하면 `GEMINI_MODEL`로 바꾼다(예: `gemini-3.8-flash`).
+- 이 근거는 문서 요약이며 **모델 ID·무료 티어 적용 여부는 실제 호출로 확인하지 못했다**(아래).
+
+### 실제 호출로 확인한 것 / 못 한 것
+- **확인(가짜 응답 테스트):** 설정별 주소·모델·키·옵션 선택, 키 없을 때 안내, 업체 이름이 들어간 오류 문구, JSON 코드블록 처리, 안전 필터·잘림 처리, 공개/관리자 상태 응답, EXAONE 기본값 불변.
+- **못 한 것(로컬에 Gemini 키가 없어 실제 호출 없음):** Gemini 응답 형식, `max_tokens` 적용, 종료 사유 값, 한국어 요약·추출 품질, 무료 한도, 모델 ID 유효성.
+- **팀장님 확인 방법(키 등록·재배포 후):**
+  1. 관리자 → AI 설정 탭: 제공자 `Gemini`·모델·`API 키 ✅` 확인 → **연결 테스트**(1회 호출)가 성공하는지(= 주소·키·모델·`max_tokens` 형식이 받아들여짐)
+  2. 채널에서 **대화 요약**, **AI 검색**(예: "팀장"), **할 일 추출**을 각각 실행해 결과와 오류 문구 확인
+  3. 오류가 나면 문구가 `Gemini`를 가리키는지: 키 오류(401/403), 한도(429), 잘림(`AI_OUTPUT_TRUNCATED`), 형식 오류(`INVALID_AI_RESPONSE`), 안전 필터(`AI_CONTENT_FILTERED`)
+  4. 안내문이 "외부 AI 서비스(Gemini)로 전송됩니다"로 보이는지
+- **무료 티어 주의:** 문서상 무료 티어는 입력 데이터가 제품 개선에 사용될 수 있다(유료는 아님). 사내 대화·작성자 이름을 보내므로 팀 기준에서 허용되는지 확인이 필요하다.

@@ -4,8 +4,10 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { createExaoneExtra, EXTRACT_MAX_TOKENS, EXTRACT_TIMEOUT_MS, SEARCH_MAX_TOKENS, SEARCH_TIMEOUT_MS, seoulCalendar } from "./extra.ts";
 import { SUMMARY_TIMEOUT_MS } from "./summarize/handler.ts";
+import { EXAONE_CONFIG, GEMINI_DEFAULT_MODEL, GEMINI_URL, geminiConfig } from "./provider.ts";
 
 const TEST_CREDENTIAL = "unit-test-only";
+const GEMINI_FOR_TEST = geminiConfig({});
 const context = { referenceTime: "2026-11-23T01:00:00Z", timeZone: "Asia/Seoul" };
 const plan = { keywords: ["배포"], from: "2026-11-16T00:00:00+09:00", to: "2026-11-23T00:00:00+09:00" };
 const source = [{ id: 10, content: "테스트 담당 가: 내일까지 배포 점검을 하겠습니다.", created_at: "2026-11-22T16:00:00Z", parent_id: null }];
@@ -143,7 +145,6 @@ test("비JSON·추론만 있는 응답·코드 블록·잘림·잘못된 스키�
     Response.json({ choices: [{ finish_reason: "stop", message: { reasoning_content: JSON.stringify(plan) } }] }),
     Response.json({ choices: [{ finish_reason: "stop", message: { content: `\u0060\u0060\u0060json\n${JSON.stringify(plan)}\n\u0060\u0060\u0060` } }] }),
     completion({ ...plan, sql: "SELECT *" }),
-    completion(plan, "content_filter"),
   ]) {
     const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => response });
     await assert.rejects(adapter.interpret("배포", context, signal()), errorIs(502, "INVALID_AI_RESPONSE"));
@@ -190,4 +191,113 @@ test("시작 전·요청 중·본문 중 취소를 전파하고 취소 후 결�
     } });
     await assert.rejects(cancelled.interpret("배포", context, controller.signal), { name: "AbortError" });
   }
+});
+
+test("안전 필터 종료(content_filter)는 형식 오류가 아니라 별도 안내(AI_CONTENT_FILTERED)", async () => {
+  for (const provider of [undefined, { ...GEMINI_FOR_TEST }]) {
+    const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider, fetcher: async () => completion(plan, "content_filter") });
+    await assert.rejects(adapter.interpret("배포", context, signal()), (error) => {
+      assert.equal(error.status, 502);
+      assert.equal(error.code, "AI_CONTENT_FILTERED");
+      assert.match(error.message, provider ? /Gemini/ : /EXAONE/);
+      assert.doesNotMatch(error.message, /unit-test-only/);
+      return true;
+    });
+  }
+});
+
+// ───────── 업체 선택(AI_PROVIDER): 주소·모델·키·옵션이 설정대로 골라지는지 (모두 가짜 HTTP) ─────────
+
+test("provider 를 안 넘기면 지금과 똑같이 EXAONE 주소·모델·reasoning_effort 로 호출", async () => {
+  let seen;
+  const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async (url, options) => { seen = { url, body: JSON.parse(options.body), auth: options.headers.Authorization }; return completion(plan); } });
+  await adapter.interpret("배포", context, signal());
+  assert.equal(seen.url, EXAONE_CONFIG.url);
+  assert.equal(seen.body.model, EXAONE_CONFIG.model);
+  assert.equal(seen.body.reasoning_effort, "low");
+  assert.equal(seen.auth, `Bearer ${TEST_CREDENTIAL}`);
+});
+
+test("Gemini 설정: Gemini 주소·기본 모델·Bearer 키로 호출하고 reasoning_effort 는 보내지 않음", async () => {
+  let seen;
+  const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async (url, options) => {
+    seen = { url, options, body: JSON.parse(options.body) };
+    return completion(plan);
+  } });
+  const result = await adapter.interpret("배포", context, signal());
+  assert.deepEqual(result.keywords, ["배포"]);
+  assert.equal(seen.url, GEMINI_URL);
+  assert.equal(seen.options.headers.Authorization, `Bearer ${TEST_CREDENTIAL}`);
+  assert.equal(seen.options.redirect, "error");
+  assert.equal(seen.body.model, GEMINI_DEFAULT_MODEL);
+  assert.equal(seen.body.stream, false);
+  assert.equal("reasoning_effort" in seen.body, false); // EXAONE 옵션을 Gemini 가 거절하지 않도록 보내지 않는다
+  assert.equal(seen.body.max_tokens, SEARCH_MAX_TOKENS);
+  assert.doesNotMatch(seen.options.body, /unit-test-only/);
+  // 지정한 모델이 있으면 그 모델
+  const custom = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: geminiConfig({ GEMINI_MODEL: "gemini-3.8-flash" }), fetcher: async (_url, options) => { seen = JSON.parse(options.body); return completion(plan); } });
+  await custom.interpret("배포", context, signal());
+  assert.equal(seen.model, "gemini-3.8-flash");
+});
+
+test("Gemini 설정: 키가 없으면 GEMINI_API_KEY 를 안내하고 외부 호출 없음", async () => {
+  let calls = 0;
+  const adapter = createExaoneExtra({ apiKey: "", provider: GEMINI_FOR_TEST, fetcher: async () => { calls += 1; return completion(plan); } });
+  await assert.rejects(adapter.interpret("배포", context, signal()), (error) => {
+    assert.equal(error.status, 503);
+    assert.equal(error.code, "AI_NOT_CONFIGURED");
+    assert.match(error.message, /GEMINI_API_KEY/);
+    assert.doesNotMatch(error.message, /EXAONE/);
+    return true;
+  });
+  assert.equal(calls, 0);
+  // EXAONE 기본은 기존 안내 그대로
+  await assert.rejects(createExaoneExtra({ apiKey: "", fetcher: async () => completion(plan) }).interpret("배포", context, signal()), (error) => {
+    assert.match(error.message, /EXAONE_API_KEY/);
+    return true;
+  });
+});
+
+test("Gemini 설정: 오류 문구가 실제 업체 이름(Gemini)을 가리킴", async () => {
+  for (const [status, expectedStatus, code, pattern] of [
+    [401, 502, "AI_AUTH_FAILED", /Gemini 키 또는 모델/], [403, 502, "AI_AUTH_FAILED", /Gemini 키 또는 모델/],
+    [429, 429, "AI_RATE_LIMITED", /Gemini 호출 한도/], [500, 502, "AI_SERVICE_ERROR", /Gemini 요청을 처리하지 못했습니다/],
+  ]) {
+    const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async () => new Response("private provider detail", { status }) });
+    await assert.rejects(adapter.interpret("배포", context, signal()), (error) => {
+      assert.equal(error.status, expectedStatus);
+      assert.equal(error.code, code);
+      assert.match(error.message, pattern);
+      assert.doesNotMatch(error.message, /EXAONE|unit-test-only|private provider detail/);
+      return true;
+    });
+  }
+  const offline = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async () => { throw new TypeError("private network detail"); } });
+  await assert.rejects(offline.interpret("배포", context, signal()), (error) => {
+    assert.equal(error.code, "AI_CONNECTION_FAILED");
+    assert.match(error.message, /Gemini에 연결하지 못했습니다/);
+    return true;
+  });
+});
+
+test("Gemini 설정: JSON 을 코드블록으로 감싸 보내도 읽고, 설명 글이 섞이거나 EXAONE 설정이면 거절", async () => {
+  const fence = String.fromCharCode(96).repeat(3);
+  const nl = String.fromCharCode(10);
+  const wrapped = (value) => Response.json({ choices: [{ finish_reason: "stop", message: { content: fence + "json" + nl + JSON.stringify(value) + nl + fence } }] });
+  const gemini = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async () => wrapped(plan) });
+  assert.deepEqual((await gemini.interpret("배포", context, signal())).keywords, ["배포"]);
+  const geminiTasks = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async () => wrapped(aiTasks) });
+  assert.deepEqual(await geminiTasks.extract(source, context, signal()), tasks);
+  // 블록이 아닌 설명 글이 섞이면 Gemini 도 형식 오류
+  const mixed = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async () => Response.json({
+    choices: [{ finish_reason: "stop", message: { content: "결과입니다. " + fence + "json" + nl + JSON.stringify(plan) + nl + fence } }] }) });
+  await assert.rejects(mixed.interpret("배포", context, signal()), errorIs(502, "INVALID_AI_RESPONSE"));
+  // EXAONE 은 코드블록을 계속 거절한다
+  const exaone = createExaoneExtra({ apiKey: TEST_CREDENTIAL, fetcher: async () => wrapped(plan) });
+  await assert.rejects(exaone.interpret("배포", context, signal()), errorIs(502, "INVALID_AI_RESPONSE"));
+});
+
+test("Gemini 설정: 잘림(length)은 기존과 같이 AI_OUTPUT_TRUNCATED", async () => {
+  const adapter = createExaoneExtra({ apiKey: TEST_CREDENTIAL, provider: GEMINI_FOR_TEST, fetcher: async () => completion(plan, "length") });
+  await assert.rejects(adapter.interpret("배포", context, signal()), errorIs(502, "AI_OUTPUT_TRUNCATED"));
 });

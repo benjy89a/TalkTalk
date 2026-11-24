@@ -9,6 +9,7 @@ import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiReq
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 import { canRetryAfterTruncation, DEFAULT_TASK_LIMIT, TASK_LIMIT_OPTIONS } from "./taskLimits";
 import { aiPrimaryButton, aiSecondaryButton } from "./aiButtonStyles";
+import { aiTargetText, useAiProviderLabel } from "./useAiProviderLabel";
 
 type Props = {
   channelId: string | null;
@@ -35,6 +36,7 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
   const requestRef = useRef<AiRequest | null>(null);
   const inputId = useId();
   const busy = active !== null;
+  const target = aiTargetText(useAiProviderLabel()); // 실제 업체 이름(EXAONE · Gemini)
   const cancel = useCallback(() => {
     if (requestRef.current) gate.cancel(requestRef.current);
     requestRef.current = null;
@@ -93,7 +95,7 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
           <button type="submit" disabled={!channelId || !query.trim() || busy} className={aiPrimaryButton}>AI 검색</button>
         </form>
         <p className="text-xs leading-5 text-gray-600">
-          질문이 외부 EXAONE으로 전송됩니다. 허용된 데이터에만 사용해 주세요.
+          질문이 {target}로 전송됩니다. 허용된 데이터에만 사용해 주세요.
           {!channelId && " 먼저 채널을 선택해 주세요."}
         </p>
       </div>
@@ -113,7 +115,7 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
             <button type="button" disabled={!channelId || busy} onClick={() => void run("tasks")} className={aiPrimaryButton}>할 일 추출</button>
           </div>
         </div>
-        <p className="text-xs leading-5 text-gray-600">선택한 범위의 대화가 외부 EXAONE으로 전송됩니다. 대화가 길면 AI 응답이 중간에 끝날 수 있어 10개 이하를 권장합니다.</p>
+        <p className="text-xs leading-5 text-gray-600">선택한 범위의 대화가 {target}로 전송됩니다. 대화가 길면 AI 응답이 중간에 끝날 수 있어 10개 이하를 권장합니다.</p>
         {!requestGate && active && <AiRequestProgress request={active} onCancel={cancel} />}
       </div>
       {state.status === "loading" && <p role="status" className="text-gray-600">{state.kind === "search" ? "질문을 해석하고 현재 채널에서 검색하고 있습니다." : "대화에서 할 일과 원문 근거를 확인하고 있습니다."} AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}

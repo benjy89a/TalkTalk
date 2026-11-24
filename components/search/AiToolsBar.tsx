@@ -1,6 +1,6 @@
 "use client";
 // 사용 예: <AiToolsBar channelId={선택한채널id} />
-// 팀장이 slots.tsx의 AiToolsSlot에서 연결한다. 실제 사용에는 서버의 EXAONE 키가 필요하다.
+// 팀장이 slots.tsx의 AiToolsSlot에서 연결한다. 실제 사용에는 서버의 AI 키(AI_PROVIDER 로 고른 EXAONE 또는 Gemini)가 필요하다.
 import { useEffect, useRef, useState } from "react";
 import { requestChannelSummary, SummaryRequestError } from "./summaryClient";
 import AiExtraTools from "./AiExtraTools";
@@ -8,6 +8,7 @@ import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiReq
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 import { useCancelOnSignOut } from "./useCancelOnSignOut";
 import { aiPrimaryButton, aiTriggerButton } from "./aiButtonStyles";
+import { aiTargetText, useAiProviderLabel } from "./useAiProviderLabel";
 
 type Props = { channelId: string | null };
 /** 결과의 메시지를 눌렀을 때 호출된다 (CONTRACTS.md 3번 "메시지로 이동 규격"). 없으면 결과는 눌러지지 않는다. */
@@ -63,6 +64,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
   const [state, setState] = useState<SummaryState>({ status: "idle" });
   const requestRef = useRef<AiRequest | null>(null);
   const busy = useAiRequest(gate) !== null;
+  const target = aiTargetText(useAiProviderLabel()); // 실제 업체 이름(EXAONE · Gemini)
 
   useEffect(() => () => {
     if (requestRef.current) gate.cancel(requestRef.current);
@@ -133,7 +135,7 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
         </button>
       </div>
       <p className="text-xs leading-5 text-gray-600">
-        선택한 범위의 대화와 작성자 이름이 외부 EXAONE으로 전송됩니다. 허용된 대화에만 사용해 주세요. 서버 설정과 API 한도에 따라 이용이 제한될 수 있습니다.
+        선택한 범위의 대화와 작성자 이름이 {target}로 전송됩니다. 허용된 대화에만 사용해 주세요. 서버 설정과 API 한도에 따라 이용이 제한될 수 있습니다.
         {!channelId && " 먼저 채널을 선택해 주세요."}
       </p>
       {state.status === "loading" && <p role="status" className="text-gray-600">로그인·채널 권한을 확인하고 대화를 요약하고 있습니다. AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
