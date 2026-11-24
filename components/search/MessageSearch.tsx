@@ -184,7 +184,7 @@ export default function MessageSearch({ onSelect }: MessageSearchProps) {
                             ? "다이렉트 메시지"
                             : message.channels ? `# ${message.channels.name}` : "채널"}
                           {message.channels?.type === "private" && " · 비공개"}
-                          {message.parent_id !== null && " · 스레드 답글"}
+                          {message.parent_id !== null && " · 스레드 댓글"}
                         </span>
                         <span className="mt-1 line-clamp-3 block whitespace-pre-wrap break-words leading-6">{message.content}</span>
                         <span className="mt-2 block text-xs leading-5 text-gray-600">

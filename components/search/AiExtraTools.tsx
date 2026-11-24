@@ -150,7 +150,7 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
               {searchResult.messages.map((message) => {
                 const body = <>
                   <span className="line-clamp-4 block whitespace-pre-wrap break-words leading-6">{message.content}</span>
-                  <span className="mt-1 block text-xs text-gray-600">메시지 #{message.id}{message.parent_id !== null && " · 스레드 답글"}{" · "}
+                  <span className="mt-1 block text-xs text-gray-600">메시지 #{message.id}{message.parent_id !== null && " · 스레드 댓글"}{" · "}
                     <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time>
                     {onSelectMessage && " · 눌러서 채팅에서 보기"}
                   </span>
