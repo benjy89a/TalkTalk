@@ -8,11 +8,13 @@
 //   목록이 열려 있을 때 Enter 는 훅이 먼저 가로채므로(stopPropagation) 메시지가 전송되지 않는다
 // Enter: 전송 / Shift+Enter: 줄바꿈 / 최대 6줄까지 늘어나고 그 이상은 입력창 안에서 스크롤
 // 😊 버튼 (작업 2): 이모지를 골라 커서 자리에 넣는다. 창은 여러 개 연달아 고를 수 있게 열린 채로 둠 (바깥 클릭 · Esc 로 닫힘)
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+// "○○님이 입력 중…" (typing.ts): 같은 채널(스레드면 같은 스레드)에서 다른 사람이 글을 치면 입력창 바로 위에 표시
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import EmojiPicker, { useDismiss } from "./EmojiPicker";
 import { useMentionAutocomplete } from "@/components/notifications/useMentionAutocomplete";
 import { wrapSelection } from "./formatText";
 import { MAX_LENGTH, sendMessage } from "./outbox";
+import { useTyping } from "./typing";
 
 type Props = {
   channelId: string;
@@ -62,6 +64,13 @@ export default function MessageInput({
     });
   }
 
+  // 입력 중 신호: 글자가 있으면 "입력 중"(2초에 한 번), 비우면 바로 멈춤
+  const { typingText, notifyTyping, notifyStopped } = useTyping(channelId, parentId);
+  useEffect(() => {
+    if (text.trim()) notifyTyping();
+    else notifyStopped();
+  }, [text, notifyTyping, notifyStopped]);
+
   const remaining = MAX_LENGTH - text.length;
   const tooLong = remaining < 0;
   const canSend = text.trim().length > 0 && !tooLong;
@@ -83,6 +92,7 @@ export default function MessageInput({
     if (!canSend) return;
     // 입력창은 바로 비우고, 저장은 뒤에서 진행 (화면에는 즉시 흐리게 나타남)
     sendMessage({ channelId, parentId, content: text });
+    notifyStopped();
     setText("");
     ref.current?.focus();
   }
@@ -111,6 +121,14 @@ export default function MessageInput({
   return (
     <div>
       {mention.popup}
+      {/* 다른 사람이 입력 중 — 입력창 바로 위에 띄워서 입력창 위치가 들썩이지 않게 */}
+      <div className="relative">
+        {typingText && (
+          <p role="status" className="absolute bottom-full left-1 mb-0.5 text-xs leading-4 text-gray-500 italic">
+            {typingText}
+          </p>
+        )}
+      </div>
       <div className="flex items-end gap-2">
         <textarea
           ref={ref}
@@ -118,6 +136,7 @@ export default function MessageInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onBlur={notifyStopped}
           placeholder={placeholder}
           aria-label={placeholder}
           className={`min-w-0 flex-1 resize-none rounded-md border bg-white px-3 py-2 text-sm leading-6 text-gray-900 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:outline-none ${
