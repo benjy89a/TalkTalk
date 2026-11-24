@@ -182,10 +182,26 @@ test("검색: 전역 검색은 로그인 RLS에 맡기고 빈 결과·기본 20�
   assert.ok(calls.some((call) => call[0] === "messages" && call[1] === "limit" && call[2] === 21));
 });
 
-test("검색: SQL·범위 확장·빈 조건·와일드카드·잘못된 날짜의 AI 응답 거절", async (t) => {
+test("검색: 키워드·기간을 정하지 못한 모호한 질문은 502가 아니라 400 입력 안내, DB 조회 없음", async (t) => {
+  // 질문이 "이제"처럼 모호하면 AI는 지시대로 빈 조건으로 답한다. 형식 오류(502)와 구분한다.
+  for (const [index, value] of [
+    { keywords: [], from: null, to: null },
+    { keywords: [], from: "2026-11-16T00:00:00Z", to: null },
+    { keywords: [], from: null, to: "2026-11-23T00:00:00Z" },
+  ].entries()) {
+    await t.test(`빈 조건 ${index + 1}`, async () => {
+      const { createClient, calls } = mockClient();
+      const body = await expectError(await handleNaturalSearch(request({ query: "이제" }), createClient, async () => value), 400, "INVALID_QUERY");
+      assert.match(body.error.message, /키워드나 기간/);
+      assert.equal(calls.some((call) => call[0] === "from" && call[1] === "messages"), false);
+    });
+  }
+});
+
+test("검색: SQL·범위 확장·와일드카드·잘못된 날짜의 AI 응답 거절", async (t) => {
   const cases = [
     null, { ...plan, sql: "SELECT * FROM messages" }, { ...plan, channelId },
-    { keywords: [], from: null, to: null }, { ...plan, keywords: ["*"] },
+    { ...plan, keywords: ["*"] },
     { ...plan, keywords: Array(6).fill("배포") }, { ...plan, keywords: [" "] },
     { ...plan, from: "지난주" }, { ...plan, from: "2026-02-30T00:00:00Z" },
     { ...plan, from: "2026-11-23T00:00:00Z", to: "2026-11-16T00:00:00Z" },
