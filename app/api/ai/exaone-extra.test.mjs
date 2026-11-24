@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { createExaoneExtra, EXTRACT_TIMEOUT_MS, SEARCH_TIMEOUT_MS, seoulCalendar } from "./extra.ts";
+import { createExaoneExtra, EXTRACT_MAX_TOKENS, EXTRACT_TIMEOUT_MS, SEARCH_MAX_TOKENS, SEARCH_TIMEOUT_MS, seoulCalendar } from "./extra.ts";
 import { SUMMARY_TIMEOUT_MS } from "./summarize/handler.ts";
 
 const TEST_CREDENTIAL = "unit-test-only";
@@ -67,9 +67,19 @@ test("할 일은 작성 시각의 서울 날짜·근거 ID를 전송하고 추�
     assert.equal(data.messages[0].dateInSeoul, "2026-11-23");
     assert.equal(data.messages[0].id, 10);
     assert.match(body.messages[0].content, /created_at/);
+    // 추론 토큰 변동으로 4,096에서 잘려서 추출만 6,144로 올렸다(실측 2026-11-24). 검색 해석은 4,096 유지.
+    assert.equal(body.max_tokens, EXTRACT_MAX_TOKENS);
+    assert.equal(EXTRACT_MAX_TOKENS, 6144);
     return completion(tasks);
   } });
   assert.deepEqual(await adapter.extract(source, context, signal()), tasks);
+});
+
+test("추출 최악 생성 시간(6,144토큰, 실측 최저 약 26토큰/초)이 대기 제한 안이고 배포 함수 300초보다 짧음", () => {
+  const worstSeconds = EXTRACT_MAX_TOKENS / 26;
+  assert.ok(worstSeconds * 1000 < EXTRACT_TIMEOUT_MS, `최악 ${worstSeconds}초`);
+  assert.ok(EXTRACT_TIMEOUT_MS < 300000);
+  assert.equal(SEARCH_MAX_TOKENS, 4096);
 });
 
 test("기본 대기 제한은 검색·추출 모두 4분, 테스트 주입값이 있으면 우선", async (t) => {
