@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+import type { AiProviderConfig } from "../provider";
 
 export const MAX_MESSAGES = 100;
 export const MAX_MESSAGE_LENGTH = 4000;
@@ -142,32 +143,50 @@ export const SUMMARY_TIMEOUT_MS = 240000;
  */
 export const SUMMARY_MAX_TOKENS = 4096;
 
+/**
+ * 기본값은 기존 EXAONE 설정이다(provider 를 안 넘기면 지금과 똑같이 동작한다).
+ * app/api/ai/provider.ts 의 EXAONE_CONFIG 와 같은 값이어야 하며 테스트가 이를 확인한다.
+ * (확장자 없는 import 와 node --test 가 함께 쓰이도록 이 파일은 provider.ts 를 타입으로만 가져온다.)
+ */
+const DEFAULT_PROVIDER: AiProviderConfig = {
+  id: "exaone",
+  displayName: "EXAONE",
+  url: EXAONE_SUMMARY_URL,
+  model: EXAONE_MODEL,
+  envKeyName: "EXAONE_API_KEY",
+  reasoningEffort: "low",
+  acceptCodeFence: false,
+};
+
 type ExaoneOptions = {
   apiKey?: string;
   fetcher?: typeof fetch;
   timeoutMs?: number;
+  /** 업체별 주소·모델·키 이름·표시 이름. 없으면 EXAONE. route 가 resolveAiProvider() 결과를 넘긴다. */
+  provider?: AiProviderConfig;
 };
 
 /** 서버 route가 키를 전달한다. 생성/불러오기만으로 외부 요청을 보내지 않는다. */
-export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMARY_TIMEOUT_MS }: ExaoneOptions): SummaryGenerator {
+export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMARY_TIMEOUT_MS, provider = DEFAULT_PROVIDER }: ExaoneOptions): SummaryGenerator {
   return async (messages, signal) => {
     signal.throwIfAborted();
     if (!apiKey?.trim() || /[\r\n]/.test(apiKey)) {
-      throw new SummaryError(503, "AI_NOT_CONFIGURED", "서버에 EXAONE_API_KEY가 설정되지 않았습니다. 설정 담당자에게 확인해 주세요.");
+      throw new SummaryError(503, "AI_NOT_CONFIGURED", `서버에 ${provider.envKeyName}가 설정되지 않았습니다. 설정 담당자에게 확인해 주세요.`);
     }
     const texts = validateMessages(messages, MAX_SPEAKER_PREFIX_LENGTH);
     const timeout = AbortSignal.timeout(timeoutMs);
     try {
-      const response = await fetcher(EXAONE_SUMMARY_URL, {
+      const response = await fetcher(provider.url, {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey.trim()}`, "Content-Type": "application/json" },
         cache: "no-store",
         redirect: "error",
         signal: AbortSignal.any([signal, timeout]),
         body: JSON.stringify({
-          model: EXAONE_MODEL,
+          model: provider.model,
           stream: false,
-          reasoning_effort: "low",
+          // 업체가 거절할 수 있는 옵션은 설정에서 끈다(Gemini 는 보내지 않는다).
+          ...(provider.reasoningEffort ? { reasoning_effort: provider.reasoningEffort } : {}),
           max_tokens: SUMMARY_MAX_TOKENS,
           messages: [
             {
@@ -184,15 +203,15 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMA
         // 업체 오류 본문은 키·진단 정보가 섞일 수 있어 파싱하거나 로그에 남기지 않는다.
         await response.body?.cancel();
         if (response.status === 401 || response.status === 403) {
-          throw new SummaryError(502, "AI_AUTH_FAILED", "EXAONE 키 또는 모델 사용 권한을 확인해 주세요.");
+          throw new SummaryError(502, "AI_AUTH_FAILED", `${provider.displayName} 키 또는 모델 사용 권한을 확인해 주세요.`);
         }
         if (response.status === 429) {
-          throw new SummaryError(429, "AI_RATE_LIMITED", "EXAONE 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.");
+          throw new SummaryError(429, "AI_RATE_LIMITED", `${provider.displayName} 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.`);
         }
         if (response.status === 408 || response.status === 504) {
           throw new SummaryError(504, "AI_TIMEOUT", "요약 응답 시간이 초과됐습니다. 잠시 후 다시 시도해 주세요. 반복되면 관리자에게 문의해 주세요.");
         }
-        throw new SummaryError(502, "AI_SERVICE_ERROR", "EXAONE 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        throw new SummaryError(502, "AI_SERVICE_ERROR", `${provider.displayName} 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.`);
       }
       let value: unknown;
       try {
@@ -209,6 +228,10 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMA
       if (choice && typeof choice === "object" && "finish_reason" in choice && choice.finish_reason === "length") {
         throw new SummaryError(502, "AI_OUTPUT_TRUNCATED", "요약 생성이 중간에 끝났습니다. 다시 시도해 주세요. 반복되면 대화 범위를 줄여 보세요.");
       }
+      if (choice && typeof choice === "object" && "finish_reason" in choice && choice.finish_reason === "content_filter") {
+        // 업체의 안전 필터가 응답을 막은 경우(문서에 응답 모양이 없어 종료 사유 값으로만 구분한다).
+        throw new SummaryError(502, "AI_CONTENT_FILTERED", `AI 서비스(${provider.displayName})가 이 내용에는 응답하지 않았습니다. 대화 범위를 바꿔 다시 시도해 주세요.`);
+      }
       if (!choice || typeof choice !== "object" || !("finish_reason" in choice) || choice.finish_reason !== "stop"
         || !("message" in choice) || !choice.message || typeof choice.message !== "object"
         || !("content" in choice.message) || typeof choice.message.content !== "string"
@@ -223,7 +246,7 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMA
         throw new SummaryError(504, "AI_TIMEOUT", "요약 응답 시간이 초과됐습니다. 잠시 후 다시 시도해 주세요. 반복되면 관리자에게 문의해 주세요.");
       }
       if (error instanceof SummaryError) throw error;
-      throw new SummaryError(502, "AI_CONNECTION_FAILED", "EXAONE에 연결하지 못했습니다. 연결 상태를 확인해 주세요.");
+      throw new SummaryError(502, "AI_CONNECTION_FAILED", `${provider.displayName}에 연결하지 못했습니다. 연결 상태를 확인해 주세요.`);
     }
   };
 }
@@ -300,3 +323,6 @@ export async function handleSummarize(
     return json({ error: { code: "INTERNAL_ERROR", message: "요약을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요." } }, 500);
   }
 }
+
+/** 업체 설정을 받는 이름. route 는 이 이름을 쓴다(EXAONE 전용 이름은 기존 테스트와의 호환을 위해 남겨 둔다). */
+export const createAiSummary = createExaoneSummary;

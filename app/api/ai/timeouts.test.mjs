@@ -16,5 +16,6 @@ test("4개 route는 300초 실행 한도·기본 AI 대기 사용 (실제 route 
     assert.doesNotMatch(source, /timeoutMs\s*:/, `${name}: 기본값보다 짧은 개별 설정 금지`);
   }
   const status = await readFile(new URL("./status/route.ts", import.meta.url), "utf8");
-  assert.match(status, /createExaoneSummary\(/, "관리자 probe도 요약 기본 대기 240초 사용");
+  // 함수 이름은 업체 선택(AI_PROVIDER) 도입 후 createAiSummary(createExaoneSummary 의 별칭)다. 업체 설정(provider)을 넘기되 대기는 기본값을 쓴다.
+  assert.match(status, /create(Exaone|Ai)Summary\(\{[^}]*provider[^}]*\}\)/, "관리자 probe도 선택한 업체로 요약 기본 대기 240초 사용");
 });

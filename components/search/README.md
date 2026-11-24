@@ -127,3 +127,12 @@ node --test components/search/aiRequestGate.test.mjs
 ```
 
 실제 컴포넌트의 독립 브라우저 검사에서는 고정 HTTP/시간 가속으로 동시 이벤트 1회, 닫힌 패널 진행 표시/취소, 늦은 응답, 완료/실패/채널 변경 후 해제, 관리자 확인창/취소를 검사했습니다. 실제 앱 로그인/실DB/업체 사용량·성공/배포 검증은 아닙니다.
+
+## AI 제공업체 표시 (EXAONE / Gemini)
+
+서버 환경변수 `AI_PROVIDER`로 업체를 고르므로(자세한 내용은 `app/api/ai/README.md`의 "AI 제공업체 선택") 화면의 안내문은 업체 이름을 하드코딩하지 않는다.
+
+- `useAiProviderLabel`(훅)이 `GET /api/ai/status?view=public`에서 업체 **이름만** 한 번 받아 `AiToolsBar`·`AiExtraTools`의 안내문("선택한 범위의 대화가 외부 AI 서비스(Gemini)로 전송됩니다")에 넣는다. 받기 전이나 실패 시에는 "외부 AI 서비스"로 보이며, 키 관련 정보는 받지 않는다.
+- 관리자 `AiKeyStatus`는 키가 없을 때 넣어야 할 환경변수 **이름**(`EXAONE_API_KEY`/`GEMINI_API_KEY`)과 `AI_PROVIDER` 사용법을 보여 주고, 연결 테스트 확인창에 실제 업체 이름을 쓴다.
+- `aiStatusClient.ts`: `fetchAiProviderInfo`(이름만), `aiTargetText`(문구), `fetchAiStatus`가 `providerId`·`keyEnvName`을 선택적으로 받는다(이전 응답 모양과 호환).
+
