@@ -8,7 +8,7 @@ import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiReq
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 import { useCancelOnSignOut } from "./useCancelOnSignOut";
 import { aiPrimaryButton, aiTriggerButton } from "./aiButtonStyles";
-import { aiTargetText, useAiProviderLabel } from "./useAiProviderLabel";
+import { aiTargetText, useAiProviderInfo, useAiProviderLabel } from "./useAiProviderLabel";
 
 type Props = { channelId: string | null };
 /** 결과의 메시지를 눌렀을 때 호출된다 (CONTRACTS.md 3번 "메시지로 이동 규격"). 없으면 결과는 눌러지지 않는다. */
@@ -31,12 +31,15 @@ function ChannelAiTools({ channelId, onSelectMessage }: Props & JumpProps) {
   const [gate] = useState(createAiRequestGate);
   const active = useAiRequest(gate);
   useEffect(() => () => gate.dispose(), [gate]);
+  // 지금 쓰는 모델을 버튼에 표시 (확인용 · 서버 AI_PROVIDER/GEMINI_MODEL 설정 그대로)
+  const info = useAiProviderInfo();
+  const modelName = info?.model || info?.provider;
   return (
     <div className="relative" onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); } }}>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
-          className={aiTriggerButton(open)}>
-          ✨ AI 도구 {open ? "▾" : "▴"}{active ? " · 실행 중" : ""}
+          className={aiTriggerButton(open)} title={info ? `AI: ${info.provider}${info.model ? ` · ${info.model}` : ""}` : undefined}>
+          ✨ AI 도구{modelName && <span className="font-normal opacity-80"> ({modelName})</span>} {open ? "▾" : "▴"}{active ? " · 실행 중" : ""}
         </button>
         {active && <AiRequestProgress request={active} onCancel={() => gate.cancel()} background={!open} />}
       </div>
