@@ -155,11 +155,11 @@ export default function MessageItem({
           openQuoted();
         }
       }}
-      className={`mb-1 block min-w-36 cursor-pointer rounded-lg px-2 py-1 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+      className={`mb-1 block min-w-0 cursor-pointer rounded-lg px-2 py-1 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
         mine ? "bg-white/10 hover:bg-white/20 focus-visible:ring-white/70" : "bg-gray-200/70 hover:bg-gray-300/70 focus-visible:ring-[#1e325c]"
       } ${finding ? "opacity-60" : ""}`}
     >
-      <span className={`block text-xs leading-5 font-semibold ${mine ? "text-white" : "text-gray-900"}`}>
+      <span className={`block truncate text-xs leading-5 font-semibold ${mine ? "text-white" : "text-gray-900"}`}>
         {quote.name}에게 답장
       </span>
       <span className={`block truncate text-xs leading-5 ${mine ? "text-white/65" : "text-gray-500"}`}>{quote.text}</span>
@@ -215,7 +215,7 @@ export default function MessageItem({
   // 내 메시지(저장 완료)에만: 마우스를 올리면 보이는 "수정 · 삭제"
   const ownActions =
     mine && !status && !editing && !deleted && !confirming ? (
-      <span className={`invisible flex shrink-0 gap-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible focus-within:visible ${HOVER_ONLY}`}>
+      <span className="flex shrink-0 gap-1">
         <button
           type="button"
           onClick={() => {
@@ -243,7 +243,7 @@ export default function MessageItem({
   // 저장된 메시지 모두: 마우스를 올리면 보이는 "답장 · 복사"
   const extraActions =
     !status && !editing && !deleted && !confirming ? (
-      <span className={`invisible flex shrink-0 gap-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible focus-within:visible ${HOVER_ONLY}`}>
+      <span className="flex shrink-0 gap-1">
         {onQuote && (
           <button type="button" onClick={onQuote} className="rounded px-1 hover:text-[#1e325c]">
             답장
@@ -298,7 +298,7 @@ export default function MessageItem({
         type="button"
         onClick={onOpenThread}
         data-thread-trigger
-        className={`invisible shrink-0 rounded px-1 text-[11px] leading-4 font-medium text-gray-500 group-hover:visible hover:text-[#1e325c] focus-visible:visible ${HOVER_ONLY}`}
+        className="shrink-0 rounded px-1 hover:text-[#1e325c]"
       >
         답글
       </button>
@@ -323,7 +323,7 @@ export default function MessageItem({
       aria-label="이모지 반응 달기"
       aria-expanded={picking !== null}
       onClick={() => (picking ? setPicking(null) : openPicker("quick"))}
-      className={`${picking ? "visible" : "invisible"} shrink-0 rounded px-1 text-[13px] leading-4 text-gray-500 group-hover:visible hover:text-[#1e325c] focus-visible:visible ${HOVER_ONLY}`}
+      className="shrink-0 rounded px-1 text-[13px] hover:text-[#1e325c]"
     >
       😊+
     </button>
@@ -490,6 +490,32 @@ export default function MessageItem({
       }
     : undefined;
 
+  // 마우스를 올리면 뜨는 버튼 모음 (답장·복사·수정·삭제·😊+·답글)
+  // 예전엔 말풍선 옆에 "안 보이는 채로 자리만 차지"해서, 화면이 좁으면(스레드를 연 채 창을 줄이면) 말풍선이 눌려 글이 세로로 꺾였다
+  // → 말풍선 위에 떠 있는 작은 막대로 바꿔 자리를 차지하지 않게 함. 휴대폰은 말풍선 톡 → 버튼 줄(tapBar)
+  const hasHoverButtons = !!(extraActions || ownActions || reactButton || replyButton);
+  const hoverBar = hasHoverButtons ? (
+    <span
+      className={`absolute bottom-full z-10 mb-0.5 flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap text-gray-500 shadow-sm ${
+        mine ? "right-0" : "left-0"
+      } ${picking ? "invisible" : "invisible group-hover:visible focus-within:visible"} ${HOVER_ONLY}`}
+    >
+      {mine ? (
+        <>
+          {extraActions}
+          {ownActions}
+          {reactButton}
+          {replyButton}
+        </>
+      ) : (
+        <>
+          {reactButton}
+          {replyButton}
+          {extraActions}
+        </>
+      )}
+    </span>
+  ) : null;
   const rowBg = active ? "bg-blue-50" : "";
   // 첨부 칸 (D) — 저장된 메시지에만
   const attachments = renderAttachments && !status && !deleted ? renderAttachments(message) : null;
@@ -499,10 +525,7 @@ export default function MessageItem({
       <div ref={wrapRef} className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
         <div ref={rowRef} className={`relative flex ${maxW} items-end gap-1.5`}>
           {picker}
-          {extraActions}
-          {ownActions}
-          {reactButton}
-          {replyButton}
+          {hoverBar}
           {side}
           {editing ? (
             <div className="flex min-w-0 flex-1 flex-col items-end gap-1">
@@ -583,9 +606,7 @@ export default function MessageItem({
             </p>
           )}
           {side}
-          {reactButton}
-          {replyButton}
-          {extraActions}
+          {hoverBar}
         </div>
         {tapBar}
         {copiedLine}
