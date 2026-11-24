@@ -12,6 +12,8 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchMyDms, type DmItem } from "./dm";
+import OnlineDot from "./OnlineDot";
+import { useOnlineUsers } from "./presence";
 
 type Props = {
   selectedChannelId: string | null;
@@ -33,6 +35,8 @@ export default function DmList({
 }: Props) {
   const [dms, setDms] = useState<DmItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 접속 중인 사용자 (상대 이름 옆 초록 점)
+  const online = useOnlineUsers();
 
   useEffect(() => {
     let cancelled = false;
@@ -96,11 +100,18 @@ export default function DmList({
               aria-current={selected ? "page" : undefined}
               className={`${rowClass} ${selected ? "bg-white/15 font-semibold" : ""}`}
             >
-              <span
-                aria-hidden="true"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-white/20 text-[10px] font-bold"
-              >
-                {dm.partner.name.slice(0, 1)}
+              <span className="relative shrink-0">
+                <span
+                  aria-hidden="true"
+                  className="flex h-5 w-5 items-center justify-center rounded bg-white/20 text-[10px] font-bold"
+                >
+                  {dm.partner.name.slice(0, 1)}
+                </span>
+                <OnlineDot
+                  online={online.has(dm.partner.id)}
+                  ringClass="ring-[#1e325c]"
+                  className="absolute -bottom-0.5 -right-0.5 h-2 w-2"
+                />
               </span>
               <span
                 className={`min-w-0 flex-1 truncate ${unread ? "font-bold text-white" : ""}`}
