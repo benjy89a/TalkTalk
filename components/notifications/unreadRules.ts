@@ -87,6 +87,28 @@ export function isUnreadState(s: ChannelReadState): boolean {
   return s.latestId > s.lastReadId;
 }
 
+/**
+ * DB 에서 다시 읽었을 때 새로 알게 된 멘션 (화면이 숨겨져 실시간 신호를 놓친 경우 등).
+ * - prev 가 null 이면(처음 로그인해서 읽은 것) 예전 멘션이므로 알림 없이 배지로만 → 빈 목록
+ * - 이미 알림을 띄운 메시지(notified)는 빼고, 가장 최근 것부터 limit 개만
+ */
+export function findMissedMentions(
+  prev: Record<string, ChannelReadState> | null,
+  next: Record<string, ChannelReadState>,
+  notified: ReadonlySet<number>,
+  limit = 3,
+): { channelId: string; messageId: number }[] {
+  if (!prev) return [];
+  const found: { channelId: string; messageId: number }[] = [];
+  for (const [channelId, s] of Object.entries(next)) {
+    const before = new Set(prev[channelId]?.mentionIds ?? []);
+    for (const id of s.mentionIds) {
+      if (!before.has(id) && !notified.has(id)) found.push({ channelId, messageId: id });
+    }
+  }
+  return found.sort((a, b) => b.messageId - a.messageId).slice(0, limit);
+}
+
 function addId(ids: number[], id: number): number[] {
   if (ids.includes(id) || ids.length >= MAX_MENTIONS) return ids;
   return [...ids, id].sort((a, b) => a - b);

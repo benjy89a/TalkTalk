@@ -11,7 +11,7 @@ export type MentionEventDetail = {
 };
 
 /** 알림 카드가 화면에 머무는 시간 (ms) */
-export const TOAST_MS = 6000;
+export const TOAST_MS = 10_000;
 
 /** 한 번에 쌓아 두는 알림 카드 수 (넘으면 오래된 것부터 사라짐) */
 export const MAX_TOASTS = 3;
