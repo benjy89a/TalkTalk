@@ -93,11 +93,11 @@ export function HeaderMembersSlot() {
 }
 
 /** [E] AI 요약 · 할 일 추출 버튼 (연결 완료)
- *  TODO(A): E 가 onSelectMessage 를 열면 onSelectMessage={jumpToMessage} 를 넘긴다 (CONTRACTS.md 3번). */
+ *  AI 검색 결과·할 일 근거 번호를 누르면 그 메시지로 이동한다 (CONTRACTS.md 3번). */
 export function AiToolsSlot() {
-  const { channelId } = useSelectedChannel();
+  const { channelId, jumpToMessage } = useSelectedChannel();
   if (!channelId) return null;
-  return <AiToolsBar channelId={channelId} />;
+  return <AiToolsBar channelId={channelId} onSelectMessage={jumpToMessage} />;
 }
 
 // ───────── 스레드 패널 ─────────
