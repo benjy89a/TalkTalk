@@ -18,6 +18,7 @@ import { MAX_RENDERED } from "./types";
 import { useChannelMessages } from "./useChannelMessages";
 import { useCurrentUserId } from "./useCurrentUserId";
 import { toggleReaction, useReactions } from "./useReactions";
+import { useReadCounts } from "./readCounts";
 import { useStickToBottom } from "./useStickToBottom";
 
 type Props = {
@@ -72,6 +73,8 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
     return null;
   }, [messages]);
   useMarkAsRead(channelId, lastSavedId);
+  // 말풍선 옆 "안 읽은 사람 수" (카톡) — 멤버들의 읽음 위치를 실시간으로 받아서 셈
+  const unreadOf = useReadCounts(channelId);
 
   // 이모지 반응 (저장된 메시지만)
   const savedIds = useMemo(() => messages.filter((m) => !m.status).map((m) => m.id), [messages]);
@@ -189,6 +192,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
               renderAttachments={renderAttachments}
               reactions={reactions}
               onReact={onReact}
+              unreadOf={unreadOf}
             />
           </div>
         </div>

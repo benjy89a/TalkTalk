@@ -20,6 +20,7 @@ type Props = {
   wide?: boolean; // 좁은 스레드 패널용 넓은 말풍선
   reactions?: ReactionMap; // 이모지 반응 (메시지 id → 반응들)
   onReact?: (messageId: number, emoji: string, alreadyMine: boolean) => void;
+  unreadOf?: (message: DisplayMessage) => number; // 안 읽은 사람 수 (채널 본문만, readCounts.ts)
 };
 
 export default function MessageRows({
@@ -33,6 +34,7 @@ export default function MessageRows({
   wide,
   reactions,
   onReact,
+  unreadOf,
 }: Props) {
   // ↑ 키로 고칠 "내 마지막 메시지" (저장됐고 지워지지 않은 것)를 입력창에 알려 둔다
   let lastMineId: number | undefined;
@@ -73,6 +75,7 @@ export default function MessageRows({
               wide={wide}
               reactions={reactions ? summarize(reactions[m.id], myId) : undefined}
               onReact={onReact && !m.status ? (emoji, mine) => onReact(m.id, emoji, mine) : undefined}
+              unread={unreadOf?.(m)}
               onQuote={
                 scope && !m.status && !m.deleted_at
                   ? () => setQuote(scope, { name: m.profiles?.name || "알 수 없음", text: quoteSnippet(m.content) })

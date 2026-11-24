@@ -38,6 +38,7 @@ type Props = {
   reactions?: ReactionSummary;
   onReact?: (emoji: string, alreadyMine: boolean) => void;
   onQuote?: () => void; // "답장" — 이 메시지를 인용해서 답장
+  unread?: number; // 카톡처럼 아직 안 읽은 사람 수 (0 이면 안 보임, readCounts.ts)
 };
 
 // 클립보드 복사. 클립보드 기능이 막힌 브라우저면 예전 방식(execCommand)으로 한 번 더 시도
@@ -77,6 +78,7 @@ export default function MessageItem({
   reactions,
   onReact,
   onQuote,
+  unread = 0,
 }: Props) {
   // 말풍선 최대 폭: 채널 본문은 75%(카톡처럼), 좁은 스레드 패널은 92%
   // 휴대폰처럼 좁은 화면(sm 미만)에서는 카톡처럼 말풍선이 화면 끝까지 (반대쪽엔 시간 글자 자리만 남음)
@@ -256,6 +258,7 @@ export default function MessageItem({
   // 말풍선 옆 작은 글씨: 실패면 재전송·삭제, 묶음의 마지막이면 시간
   // 내용을 고친 적 있는 저장된 메시지 (팀장님 005: DB 가 수정 시각 자동 기록)
   const edited = !status && !!message.edited_at && !deleted;
+  const showUnread = !status && !deleted && unread > 0;
   const side =
     status === "failed" ? (
       <span className="flex shrink-0 flex-col items-end text-[11px] leading-4 text-red-600" role="alert">
@@ -269,9 +272,15 @@ export default function MessageItem({
           </button>
         </span>
       </span>
-    ) : (last && status !== "sending") || edited ? (
+    ) : (last && status !== "sending") || edited || showUnread ? (
       // 수정된 메시지는 시간 위에 "수정됨" (같은 사람이 연달아 보내 시간이 숨은 줄에도 "수정됨"은 보인다)
       <span className={`flex shrink-0 flex-col text-[11px] leading-4 whitespace-nowrap text-gray-500 ${mine ? "items-end" : "items-start"}`}>
+        {/* 안 읽은 사람 수 (카톡 노란 숫자) — 묶음 중간 메시지에도 보임 */}
+        {showUnread && (
+          <span className="font-semibold text-amber-500" title={`${unread}명이 아직 안 읽었어요`} aria-label={`안 읽은 사람 ${unread}명`}>
+            {unread}
+          </span>
+        )}
         {edited && (
           <span title={`수정: ${formatTime(message.edited_at!)}`} aria-label="수정된 메시지">
             수정됨
