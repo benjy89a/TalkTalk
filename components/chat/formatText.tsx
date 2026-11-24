@@ -7,9 +7,11 @@
 //   {빨강:글자}         → 색 글자 (빨강·파랑·초록·주황·보라 / red·blue·green·orange·purple)
 //   `코드`              → 코드 모양
 //   https://...         → 자동 링크 (새 탭)
+//   @이름               → 채널 멤버면 밑줄 링크, 누르면 "다이렉트 메시지 · 답장" 메뉴 (mentionLink.tsx)
 //
 // HTML 을 문자열로 넣지 않고 React 요소로만 만든다 → 메시지에 <script> 같은 글을 써도 그대로 글자로 보인다.
 import type { ReactNode } from "react";
+import { MentionLink } from "./mentionLink";
 
 type Rule = { name: string; re: RegExp };
 
@@ -24,6 +26,8 @@ const RULES: Rule[] = [
   { name: "italic", re: /(?<![\p{L}\p{N}_])_([^_\n]+?)_(?![\p{L}\p{N}_])/u },
   { name: "color", re: /\{(빨강|파랑|초록|주황|보라|red|blue|green|orange|purple):([^}\n]+)\}/ },
   { name: "url", re: /https?:\/\/[^\s<>()]*[^\s<>().,!?'"]/ },
+  // @멘션: 앞이 글자·숫자·점·@ 이면(예: 이메일 a@b.com) 멘션이 아님
+  { name: "mention", re: /(?<![\p{L}\p{N}_.@])@([^\s@<>()]{1,30})/u },
 ];
 
 const COLOR_KEY: Record<string, string> = {
@@ -103,6 +107,9 @@ export function formatText(text: string, mine: boolean, depth = 0, keyPrefix = "
             {m[0]}
           </a>,
         );
+        break;
+      case "mention":
+        out.push(<MentionLink key={key} token={m[1]} onDark={mine} />);
         break;
     }
     rest = rest.slice(m.index + m[0].length);

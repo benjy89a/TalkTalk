@@ -18,6 +18,7 @@ import { MAX_RENDERED } from "./types";
 import { useChannelMessages } from "./useChannelMessages";
 import { useCurrentUserId } from "./useCurrentUserId";
 import { toggleReaction, useReactions } from "./useReactions";
+import { MentionProvider } from "./mentionLink";
 import { useReadCounts } from "./readCounts";
 import { useStickToBottom } from "./useStickToBottom";
 
@@ -158,6 +159,8 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
   }
 
   return (
+    // @멘션 링크가 이 채널 멤버 이름을 알 수 있게 감싼다 (mentionLink.tsx)
+    <MentionProvider channelId={channelId}>
     <div className="relative flex min-h-0 flex-1 flex-col">
       {live === "lost" && <LostBanner />}
       {notice && <InfoBanner>{notice}</InfoBanner>}
@@ -203,5 +206,6 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
       {/* 위로 올려 보는 중이면 오른쪽 아래 동그란 ↓ (카톡처럼) */}
       <ScrollDownButton show={!detached && !atBottom && unseen === 0 && messages.length > 0} onClick={scrollToBottom} />
     </div>
+    </MentionProvider>
   );
 }
