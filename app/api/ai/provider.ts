@@ -56,14 +56,22 @@ export function parseProviderId(value: string | undefined): AiProviderId {
   return value?.trim().toLowerCase() === "gemini" ? "gemini" : "exaone";
 }
 
-export function geminiConfig(env: Env = process.env): AiProviderConfig {
-  const requested = env.GEMINI_MODEL?.trim();
+/** 모델 ID 형식이 맞으면 다듬은 값, 아니면 null. */
+export function validModelId(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && MODEL_ID.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Gemini 설정. 모델 우선순위: 관리자 설정(DB, modelOverride) → 환경변수 GEMINI_MODEL → 기본 모델.
+ * 형식이 이상한 값은 건너뛰고 다음 순위를 쓴다.
+ */
+export function geminiConfig(env: Env = process.env, modelOverride?: string | null): AiProviderConfig {
   return {
     id: "gemini",
     displayName: "Gemini",
     url: GEMINI_URL,
-    // 형식이 이상한 값은 쓰지 않고 기본 모델로 돌아간다.
-    model: requested && MODEL_ID.test(requested) ? requested : GEMINI_DEFAULT_MODEL,
+    model: validModelId(modelOverride) ?? validModelId(env.GEMINI_MODEL) ?? GEMINI_DEFAULT_MODEL,
     envKeyName: "GEMINI_API_KEY",
     // EXAONE 옵션(reasoning_effort)을 Gemini 가 거절하지 않도록 보내지 않는다. 모델 기본 생각 수준을 따른다.
     reasoningEffort: null,
@@ -71,10 +79,46 @@ export function geminiConfig(env: Env = process.env): AiProviderConfig {
   };
 }
 
-/** 환경변수로 이번 요청에 쓸 업체 설정과 키를 고른다. 키는 서버 코드(route)에서만 읽는다. */
-export function resolveAiProvider(env: Env = process.env): ResolvedAiProvider {
-  const config = parseProviderId(env.AI_PROVIDER) === "gemini" ? geminiConfig(env) : EXAONE_CONFIG;
+/**
+ * 관리자 설정(DB `ai_settings`, 007 마이그레이션)에서 읽은 업체·모델. API 키는 DB에 없다(Vercel 환경변수에만).
+ * provider 가 null 이면 "환경변수(AI_PROVIDER)를 따른다".
+ */
+export type AiSettingsOverride = { provider: AiProviderId | null; geminiModel: string | null };
+
+/**
+ * 이번 요청에 쓸 업체 설정과 키를 고른다. 키는 서버 코드(route)에서만 읽는다.
+ * 우선순위: 관리자 설정(DB 값이 있으면) → 환경변수 AI_PROVIDER → EXAONE. DB를 못 읽으면 override 를 넘기지 않아 환경변수로 동작한다.
+ */
+export function resolveAiProvider(env: Env = process.env, override?: AiSettingsOverride | null): ResolvedAiProvider {
+  const id = override?.provider ?? parseProviderId(env.AI_PROVIDER);
+  const config = id === "gemini" ? geminiConfig(env, override?.geminiModel) : EXAONE_CONFIG;
   return { ...config, apiKey: env[config.envKeyName] };
+}
+
+/** 서버에 그 업체의 키가 있는지(값은 보지 않고 있는지만). 공백뿐인 값은 없는 것으로 본다. */
+export function isProviderKeyConfigured(id: AiProviderId, env: Env = process.env): boolean {
+  const name = id === "gemini" ? "GEMINI_API_KEY" : EXAONE_CONFIG.envKeyName;
+  return Boolean(env[name]?.trim());
+}
+
+/** 관리자 화면용: 업체별 키 환경변수 이름·설정 여부·기본 모델. 키 값은 담지 않는다. */
+export type ProviderOption = {
+  id: AiProviderId;
+  displayName: string;
+  keyEnvName: string;
+  keyConfigured: boolean;
+  defaultModel: string;
+};
+
+export function listProviderOptions(env: Env = process.env): ProviderOption[] {
+  return ([EXAONE_CONFIG, geminiConfig(env)] as AiProviderConfig[]).map((config) => ({
+    id: config.id,
+    displayName: config.displayName,
+    keyEnvName: config.envKeyName,
+    keyConfigured: isProviderKeyConfigured(config.id, env),
+    // Gemini 의 기본 모델은 환경변수 GEMINI_MODEL 이 있으면 그 값(설정에서 모델을 비웠을 때 쓰는 값)
+    defaultModel: config.model,
+  }));
 }
 
 /**
