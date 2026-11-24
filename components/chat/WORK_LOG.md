@@ -286,6 +286,17 @@
   - Esc → 창만 닫히고 글자 그대로 ✅ / 스레드 입력창: Esc 1번 창만, 2번 스레드 닫힘 ✅
   - lint · build ✅
 
+### 24. 삭제 확인 줄이 다시 팝업으로 나옴 (계섭님 로컬 테스트 중 제보) → PR #72
+- 🐞 문제: 21번에서 고친 "말풍선 아래 삭제 확인 줄"이 최신 main 에서 다시 브라우저 팝업으로 나옴.
+- 원인: 21번 커밋(bf77615)을 팀장님 #58 브랜치에 올렸는데, #58 이 그 전에 머지돼서 main 에 안 들어감.
+- 해결: main 기준 새 브랜치 `feature/gyeseop-delete-confirm` 에 그 커밋을 다시 올림 → PR #72. 그사이 #69·#70 이 머지돼 `MessageItem.tsx`(이모지 상태 변수 옆)·WORK_LOG 충돌 → 둘 다 살려 정리, lint · build ✅.
+- 검증 (계섭테스트1, main + #72): 삭제 → 팝업 없음 · 확인 줄 · 처음 초점 "취소" ✅ / 취소 → 메시지 그대로 ✅ (실제로 지우지 않음)
+- 🔎 함께 확인: main 의 검색 이동은 팀장님 `ChannelContext.jumpToMessage` 가 번호를 기억하지만 `MessageArea.tsx` 가 아직 `MessageList` 에 넘기지 않아 **스크롤이 안 됨**.
+  내 컴퓨터에서만 아래 3가지를 붙여 확인: 첫 메시지(id 1)로 이동·강조 ✅ / 맨 아래로 내린 뒤 같은 결과 다시 클릭 → 또 이동 ✅
+- **팀장님께 요청 필요** (`components/layout/MessageArea.tsx`):
+  ① `useSelectedChannel()` 에서 `focusMessageId, clearFocusMessage` 꺼내기 ② `<MessageList ... focusMessageId={focusMessageId ?? undefined} />`
+  ③ `useEffect(() => { if (focusMessageId !== null) clearFocusMessage(); }, [focusMessageId, clearFocusMessage]);` (넘긴 뒤 비워야 같은 결과를 다시 눌러도 이동)
+
 ### 팀 규정 점검
 - CLAUDE.md · PR 템플릿 · TECH_SPEC · FINAL_CHECKLIST 와 대조 → 위반 없음. `MessageItem.tsx` 에 빠져 있던 `"use client"` 만 규칙대로 추가.
 - 모든 변경은 `components/chat/` 안. 패키지 추가 없음. 비밀값 0건.
