@@ -249,6 +249,32 @@ export type Database = {
           },
         ];
       };
+      // AI 업체 선택 (007_ai_settings.sql). 한 줄뿐. 읽기는 로그인 사용자 누구나, 바꾸기는 admin_set_ai_settings 로만.
+      // API 키는 여기 없다 (Vercel 환경변수에만).
+      ai_settings: {
+        Row: {
+          id: boolean;
+          ai_provider: "exaone" | "gemini" | null; // null = 환경변수(AI_PROVIDER) 따르기
+          gemini_model: string | null; // null = 기본 모델
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          ai_provider?: "exaone" | "gemini" | null;
+          gemini_model?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: boolean;
+          ai_provider?: "exaone" | "gemini" | null;
+          gemini_model?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -283,6 +309,11 @@ export type Database = {
       };
       // 005_message_edit_delete.sql (본인 또는 채널 관리자, DM 은 본인만)
       soft_delete_message: { Args: { mid: number }; Returns: undefined };
+      // 007_ai_settings.sql (서비스 관리자만, 아니면 에러). provider null = 환경변수 따르기
+      admin_set_ai_settings: {
+        Args: { provider: "exaone" | "gemini" | null; model?: string | null };
+        Returns: Database["public"]["Tables"]["ai_settings"]["Row"];
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
@@ -299,5 +330,6 @@ export type Message = Tables["messages"]["Row"];
 export type Attachment = Tables["attachments"]["Row"];
 export type AppAdmin = Tables["app_admins"]["Row"];
 export type Reaction = Tables["reactions"]["Row"];
+export type AiSettings = Tables["ai_settings"]["Row"];
 
 export type NewMessage = Tables["messages"]["Insert"];
