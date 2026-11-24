@@ -65,10 +65,11 @@ export function SidebarProfileSlot() {
 // ───────── 메시지 영역 ─────────
 
 /** [E] 헤더 오른쪽 검색창 (연결 완료)
- *  결과를 누르면 그 채널로 이동한다. 메시지 위치까지 스크롤하는 건 B 가 focusMessageId 를 열어 주면 추가한다. */
+ *  결과를 누르면 그 채널로 가서 메시지 번호를 jumpToMessage 에 맡긴다 (CONTRACTS.md 3번).
+ *  TODO(A): B 가 MessageList 에 focusMessageId 를 열면 MessageArea 에서 넘겨 실제 스크롤까지 이어진다. */
 export function HeaderSearchSlot() {
-  const { selectChannel } = useSelectedChannel();
-  return <MessageSearch onSelect={(channelId) => selectChannel(channelId)} />;
+  const { jumpToMessage } = useSelectedChannel();
+  return <MessageSearch onSelect={jumpToMessage} />;
 }
 
 // [D] 첨부 버튼·첨부 미리보기·@멘션은 칸 대신 MessageArea 의 MessageInput(extras)·MessageList(renderAttachments)에
@@ -91,7 +92,8 @@ export function HeaderMembersSlot() {
   );
 }
 
-/** [E] AI 요약 · 할 일 추출 버튼 (연결 완료) */
+/** [E] AI 요약 · 할 일 추출 버튼 (연결 완료)
+ *  TODO(A): E 가 onSelectMessage 를 열면 onSelectMessage={jumpToMessage} 를 넘긴다 (CONTRACTS.md 3번). */
 export function AiToolsSlot() {
   const { channelId } = useSelectedChannel();
   if (!channelId) return null;

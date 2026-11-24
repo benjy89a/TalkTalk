@@ -103,6 +103,23 @@ import AiToolsBar from "@/components/search/AiToolsBar";
 
 `AiKeyStatus.tsx`는 확인창 승인 후에만 호출하며, 연결 테스트도 최대 240초입니다. 공통 진행 표시를 재사용해 경과 시간과 취소 버튼을 제공합니다. 취소/해제 후 늦게 도착한 응답은 표시하지 않습니다. 관리자 페이지의 잠금은 채팅 도구와 별개 화면의 잠금입니다. 이미 업체가 처리한 사용량을 취소로 되돌릴 수는 없습니다.
 
+## 탭 이동 중에도 AI 요청 유지 (로그아웃할 때만 취소)
+
+Supabase는 다른 탭에 갔다가 돌아오면 로그인 상태를 다시 확인하며 **같은 계정의 `SIGNED_IN`** 신호를 다시 보냅니다(`@supabase/auth-js` 2.119.1의 `_recoverAndRefresh`). 이전에는 `AiExtraTools`가 이 신호로 요청을 취소해서, 탭만 바꿔도 AI 검색·할 일 추출이 끊길 수 있었습니다.
+
+이제 요약·AI 검색·할 일 추출과 상단 키워드 검색(`MessageSearch`, 열린 결과 목록)은 `useCancelOnSignOut` 하나로 같은 규칙(`authCancel.ts`)을 씁니다.
+
+| 로그인 신호 | 처리 |
+|---|---|
+| `SIGNED_OUT` (로그아웃) | 실행 중인 요청을 취소하고 이전 결과를 지운다 |
+| `SIGNED_IN` + 다른 계정 | 이전 계정이 로그아웃된 것으로 보고 취소한다 |
+| `SIGNED_IN` + 같은 계정 (탭 복귀) | 유지한다 |
+| `TOKEN_REFRESHED`·`USER_UPDATED`·`INITIAL_SESSION` | 유지한다 |
+
+```bash
+node --test components/search/authCancel.test.mjs
+```
+
 ## 동시 실행·대기 회귀 검사
 
 ```bash

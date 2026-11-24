@@ -2,6 +2,7 @@
 
 // [C] 채널 기능에서 같이 쓰는 모양(디자인 가이드 6절 클래스)과 작은 대화상자
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 export const primaryButton =
   "inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-[#1e325c] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#172746] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
@@ -31,6 +32,10 @@ export function toKoreanChannelError(err: unknown): string {
 }
 
 // 화면 가운데 뜨는 흰 상자. Esc 키나 바깥(어두운 부분)을 누르면 닫힌다.
+// - 포털(createPortal)로 document.body 에 바로 붙인다.
+//   사이드바(휴대폰 서랍)처럼 위치 이동(translate) 효과가 있는 칸 안에서 열면
+//   fixed 상자가 화면 전체가 아니라 그 칸 안에 갇혀서 좁게 잘려 보이기 때문.
+// - 내용이 길면 상자 안에서 스크롤된다 (작은 화면에서도 버튼이 화면 밖으로 안 나가게).
 export function ChannelDialog({
   title,
   onClose,
@@ -51,10 +56,17 @@ export function ChannelDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  // 대화상자는 버튼을 누른 뒤에만 열리므로 이때는 항상 브라우저 안이다 (서버 렌더링 때는 그리지 않음)
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+      onClick={(e) => {
+        // 포털이어도 React 이벤트는 원래 위치(사이드바 등)로 올라가므로 여기서 멈춘다
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         ref={boxRef}
@@ -63,7 +75,7 @@ export function ChannelDialog({
         aria-label={title}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-xl bg-white p-6 text-gray-900 shadow-xl outline-none"
+        className="max-h-full w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 text-left text-gray-900 shadow-xl outline-none"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold">{title}</h2>
@@ -78,6 +90,7 @@ export function ChannelDialog({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
