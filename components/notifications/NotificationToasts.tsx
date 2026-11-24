@@ -1,6 +1,10 @@
 "use client";
 
-// 알림 (D) — 멘션 알림 카드(토스트) · 윈도우 알림 · 탭 제목 숫자
+// 알림 (D) — 멘션·초대 알림 카드(토스트) · 윈도우 알림 · 탭 제목 숫자
+//
+// 비공개 채널에 초대되거나 누가 나에게 새 DM 을 시작하면 (006 channel_members Realtime):
+//   - "🔒 비공개 채널 #인사팀에 초대됐어요" / "💬 계섭님이 DM을 시작했어요" 카드 → 누르면 그 채널 열기
+//   - 사이드바 채널·DM 목록을 바로 다시 불러온다 (refreshChannelList / refreshDmList)
 //
 // 누가 나를 @멘션하면:
 //   - TalkTalk 탭을 보고 있을 때 → 화면 오른쪽 위에 알림 카드가 10초 동안 떴다가 사라진다
@@ -29,19 +33,22 @@ import {
 } from "./desktopNotify";
 import {
   chooseNotify,
+  INVITE_EVENT,
   MAX_TOASTS,
   MENTION_EVENT,
   mentionTitle,
   previewText,
   tabTitle,
   TOAST_MS,
+  type InviteEventDetail,
   type MentionEventDetail,
 } from "./notifyRules";
 
 type Toast = {
   key: string;
+  icon: string;
   channelId: string;
-  messageId: number;
+  messageId: number | null; // 멘션이면 그 메시지로, 초대면(null) 채널로 이동
   title: string;
   body: string;
 };
@@ -73,16 +80,17 @@ function channelInfo(channelId: string) {
 }
 
 export default function NotificationToasts() {
-  const { channelId, jumpToMessage } = useSelectedChannel();
+  const { channelId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList } =
+    useSelectedChannel();
   const { mentions } = useUnread(channelId);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [askDesktop, setAskDesktop] = useState(false);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // 이벤트 처리 중에 최신 값을 쓰기 위해 ref 에 담아 둔다
-  const latest = useRef({ channelId, jumpToMessage });
+  const latest = useRef({ channelId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList });
   useEffect(() => {
-    latest.current = { channelId, jumpToMessage };
+    latest.current = { channelId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList };
   });
 
   const dismiss = useCallback((key: string) => {
@@ -91,63 +99,93 @@ export default function NotificationToasts() {
     setToasts((list) => list.filter((t) => t.key !== key));
   }, []);
 
+  // 멘션 → 그 메시지로 이동 + 강조 / 초대 → 그 채널 열기
+  const go = useCallback((t: Pick<Toast, "channelId" | "messageId">) => {
+    if (t.messageId !== null) latest.current.jumpToMessage(t.channelId, t.messageId);
+    else latest.current.selectChannel(t.channelId);
+  }, []);
+
   const open = useCallback(
     (t: Toast) => {
       dismiss(t.key);
-      latest.current.jumpToMessage(t.channelId, t.messageId);
+      go(t);
     },
-    [dismiss],
+    [dismiss, go],
   );
 
-  // ---- 멘션 신호 받기 ----
-  useEffect(() => {
-    async function onMention(e: Event) {
-      const d = (e as CustomEvent<MentionEventDetail>).detail;
+  // ---- 알림 띄우기 (멘션·초대 공통) ----
+  const notify = useCallback(
+    (t: Toast) => {
       const how = chooseNotify({
-        messageChannelId: d.channelId,
+        messageChannelId: t.channelId,
         activeChannelId: latest.current.channelId,
         pageVisible: document.visibilityState === "visible",
         desktopAllowed: desktopAllowed(),
       });
-      if (!how.toast && !how.desktop) return;
+      if (how.desktop) showDesktop(t.title, t.body, t.key, () => go(t));
+      if (!how.toast) return;
 
-      const [name, channel] = await Promise.all([authorName(d.authorId), channelInfo(d.channelId)]);
-      const title = mentionTitle(name, channel);
-      const body = previewText(d.content);
-
-      if (how.desktop) {
-        showDesktop(title, body, `mention-${d.messageId}`, () =>
-          latest.current.jumpToMessage(d.channelId, d.messageId),
+      setToasts((list) => {
+        if (list.some((x) => x.key === t.key)) return list;
+        return [...list, t].slice(-MAX_TOASTS);
+      });
+      // 10초 뒤 사라짐. 단 탭이 숨겨져 있으면 돌아와서 볼 수 있게 기다린다
+      const schedule = () => {
+        timers.current.set(
+          t.key,
+          setTimeout(() => {
+            if (document.visibilityState === "visible") dismiss(t.key);
+            else schedule();
+          }, TOAST_MS),
         );
-      }
-      if (how.toast) {
-        const key = `mention-${d.messageId}`;
-        setToasts((list) => {
-          if (list.some((t) => t.key === key)) return list;
-          const next = [...list, { key, channelId: d.channelId, messageId: d.messageId, title, body }];
-          return next.slice(-MAX_TOASTS);
-        });
-        // 10초 뒤 사라짐. 단 탭이 숨겨져 있으면 돌아와서 볼 수 있게 기다린다
-        const schedule = () => {
-          timers.current.set(
-            key,
-            setTimeout(() => {
-              if (document.visibilityState === "visible") dismiss(key);
-              else schedule();
-            }, TOAST_MS),
-          );
-        };
-        schedule();
-      }
+      };
+      schedule();
+    },
+    [dismiss, go],
+  );
+
+  // ---- 멘션·초대 신호 받기 ----
+  useEffect(() => {
+    async function onMention(e: Event) {
+      const d = (e as CustomEvent<MentionEventDetail>).detail;
+      // 지금 보고 있는 채널이면 미리 걸러서 이름을 읽어 오지 않는다
+      if (d.channelId === latest.current.channelId && document.visibilityState === "visible") return;
+      const [name, channel] = await Promise.all([authorName(d.authorId), channelInfo(d.channelId)]);
+      notify({
+        key: `mention-${d.messageId}`,
+        icon: "💬",
+        channelId: d.channelId,
+        messageId: d.messageId,
+        title: mentionTitle(name, channel),
+        body: previewText(d.content),
+      });
     }
+
+    function onInvite(e: Event) {
+      const d = (e as CustomEvent<InviteEventDetail>).detail;
+      // 사이드바 목록에 새 채널·DM 이 바로 보이도록 목록을 다시 불러온다 (팀장님 ChannelContext)
+      if (d.kind === "dm") latest.current.refreshDmList();
+      else latest.current.refreshChannelList();
+      notify({
+        key: `invite-${d.channelId}`,
+        icon: d.kind === "dm" ? "💬" : "🔒",
+        channelId: d.channelId,
+        messageId: null,
+        title: d.title,
+        body: d.kind === "dm" ? "눌러서 대화 열기" : "눌러서 채널로 이동",
+      });
+    }
+
     window.addEventListener(MENTION_EVENT, onMention);
+    window.addEventListener(INVITE_EVENT, onInvite);
     const timerMap = timers.current;
     return () => {
       window.removeEventListener(MENTION_EVENT, onMention);
+      window.removeEventListener(INVITE_EVENT, onInvite);
       timerMap.forEach(clearTimeout);
       timerMap.clear();
     };
-  }, [dismiss]);
+  }, [notify]);
 
   // ---- "알림 켜기" 안내는 처음 한 번만 ----
   useEffect(() => {
@@ -215,10 +253,10 @@ export default function NotificationToasts() {
             type="button"
             onClick={() => open(t)}
             className="min-w-0 flex-1 text-left focus-visible:outline-none"
-            title="눌러서 메시지로 이동"
+            title={t.messageId !== null ? "눌러서 메시지로 이동" : "눌러서 채널로 이동"}
           >
             <span className="flex items-center gap-1 font-semibold">
-              <span aria-hidden="true">💬</span>
+              <span aria-hidden="true">{t.icon}</span>
               <span className="truncate">{t.title}</span>
             </span>
             <span className="mt-0.5 block truncate text-gray-600">{t.body}</span>

@@ -71,3 +71,11 @@ test("놓친 멘션: 다시 읽었을 때 새로 생긴 것만, 처음 로그인
   assert.deepEqual(findMissedMentions(prev, next, new Set([15, 20])), [{ channelId: "a", messageId: 13 }]); // 이미 알림 띄운 건 제외
   assert.equal(findMissedMentions(prev, next, new Set(), 1).length, 1); // 최대 개수
 });
+
+test("새로 생긴 채널 찾기 (놓친 초대)", async () => {
+  const { findNewChannels } = await import("./unreadRules.ts");
+  const s = { lastReadId: 0, latestId: 0, mentionIds: [] };
+  assert.deepEqual(findNewChannels(null, { a: s }), []); // 처음 로그인
+  assert.deepEqual(findNewChannels({ a: s }, { a: s, b: s }), ["b"]);
+  assert.deepEqual(findNewChannels({ a: s, b: s }, { a: s }), []); // 나간 채널은 아님
+});

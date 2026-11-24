@@ -55,3 +55,33 @@ export function chooseNotify(input: {
   // 탭이 안 보일 때: 윈도우 알림이 허락돼 있으면 그걸로, 아니면 돌아왔을 때 보이도록 카드로 남겨 둔다
   return { toast: !desktopAllowed, desktop: desktopAllowed };
 }
+
+/** 비공개 채널 초대·새 DM 이 생기면 이 이름의 신호를 보낸다 (unreadStore → NotificationToasts) */
+export const INVITE_EVENT = "talktalk:invite";
+
+export type InviteEventDetail = {
+  channelId: string;
+  kind: "private" | "dm";
+  title: string;
+};
+
+/**
+ * 내가 새 채널의 멤버가 됐을 때 알림 문구. 알릴 필요 없으면 null
+ * - 내가 만든 채널·DM (내가 한 일) → null
+ * - 공개 채널 (내가 직접 참여한 것) → null
+ * - DM → "계섭님이 DM을 시작했어요"
+ * - 비공개 채널 → "비공개 채널 #인사팀에 초대됐어요" (누가 초대했는지는 DB 에 기록되지 않음)
+ */
+export function inviteNotice(input: {
+  type: string;
+  createdBy: string | null;
+  me: string;
+  channelName: string;
+  partnerName: string | null;
+}): { kind: "private" | "dm"; title: string } | null {
+  const { type, createdBy, me, channelName, partnerName } = input;
+  if (createdBy === me) return null;
+  if (type === "dm") return { kind: "dm", title: `${partnerName?.trim() || "누군가"}님이 DM을 시작했어요` };
+  if (type === "private") return { kind: "private", title: `비공개 채널 #${channelName}에 초대됐어요` };
+  return null;
+}
