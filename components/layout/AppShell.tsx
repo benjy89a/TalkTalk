@@ -4,6 +4,8 @@ import { ChannelProvider } from "./ChannelContext";
 import Sidebar from "./Sidebar";
 import MessageArea from "./MessageArea";
 import ThreadPanel from "./ThreadPanel";
+// [D] 멘션 알림 카드·윈도우 알림·탭 제목 숫자 (useSelectedChannel 을 쓰므로 ChannelProvider 안에 둔다)
+import NotificationToasts from "@/components/notifications/NotificationToasts";
 
 export default function AppShell() {
   return (
@@ -13,6 +15,7 @@ export default function AppShell() {
         <MessageArea />
         <ThreadPanel />
       </div>
+      <NotificationToasts />
     </ChannelProvider>
   );
 }
