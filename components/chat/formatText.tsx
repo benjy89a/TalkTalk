@@ -7,7 +7,7 @@
 //   {빨강:글자}         → 색 글자 (빨강·파랑·초록·주황·보라 / red·blue·green·orange·purple)
 //   `코드`              → 코드 모양
 //   https://...         → 자동 링크 (새 탭)
-//   @이름               → 채널 멤버면 밑줄 링크, 누르면 "다이렉트 메시지 · 답장" 메뉴 (mentionLink.tsx)
+//   @이름               → 채널 멤버면 "@" 빼고 이름만 굵게 · 색 강조 (mentionLink.tsx)
 //
 // HTML 을 문자열로 넣지 않고 React 요소로만 만든다 → 메시지에 <script> 같은 글을 써도 그대로 글자로 보인다.
 import type { ReactNode } from "react";

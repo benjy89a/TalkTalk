@@ -14,7 +14,7 @@
 // 답장(onQuote): 입력창 위에 "○○님에게 답장" → 보내면 메시지 맨 앞에 "> 이름: 원문" 줄 (composer.ts). 말풍선 안에 인용 칸으로 그림
 // 복사: 말풍선 글(인용 줄 빼고)을 클립보드에 복사
 // ↑ 키 수정: 입력창이 비어 있을 때 ↑ 를 누르면 그 칸의 내 마지막 메시지가 수정 모드로 (composer.ts 의 수정 요청)
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { goToQuoted, splitQuote, useEditRequest, withQuote } from "./composer";
 import EmojiPicker, { useDismiss } from "./EmojiPicker";
 import { deleteMessage, editMessage } from "./messageActions";
@@ -22,7 +22,6 @@ import { REACTION_EMOJIS, type ReactionSummary } from "./useReactions";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
 import { formatText } from "./formatText";
-import { SenderContext } from "./mentionLink";
 
 type Props = {
   message: DisplayMessage;
@@ -181,12 +180,7 @@ export default function MessageItem({
       <span className={`block truncate text-xs leading-5 ${mine ? "text-white/65" : "text-gray-500"}`}>{quote.text}</span>
     </span>
   ) : null;
-  // 말풍선 안 "나를 멘션" 링크가 이 메시지를 보낸 사람에게 답장 · DM 하도록 (mentionLink.tsx SenderContext)
-  const sender = useMemo(() => ({ id: message.user_id, name, onReply: onQuote }), [message.user_id, name, onQuote]);
-  const bubbleBody = (onDark: boolean) => (
-    <SenderContext.Provider value={sender}>{bubbleText(onDark)}</SenderContext.Provider>
-  );
-  const bubbleText = (onDark: boolean) =>
+  const bubbleBody = (onDark: boolean) =>
     quote ? (
       <span className="flex gap-1">
         <span aria-hidden className={`shrink-0 font-semibold ${onDark ? "text-white/70" : "text-gray-500"}`}>
