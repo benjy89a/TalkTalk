@@ -3,7 +3,7 @@
 // 현재 채널만 검색한다. DB 업무 저장·자동 배정은 하지 않는다.
 // onSelectMessage 를 받으면 결과 메시지·할 일 근거 번호를 눌러 그 메시지로 이동을 요청한다 (실제 스크롤은 B·팀장).
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCancelOnSignOut } from "./useCancelOnSignOut";
 import { AiExtraRequestError, requestExtractTasks, requestNaturalSearch, type AiSearchResult, type AiTaskResult } from "./extraClient";
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
@@ -39,21 +39,14 @@ function ChannelExtraTools({ channelId, requestGate, onSelectMessage }: Props) {
     setState({ status: "idle" });
   }, [gate]);
 
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    try {
-      const { data } = createClient().auth.onAuthStateChange((event) => {
-        if (event === "SIGNED_OUT" || event === "SIGNED_IN") cancel();
-      });
-      unsubscribe = () => data.subscription.unsubscribe();
-    } catch { /* 실제 요청에서 서버 설정 오류를 안내한다. */ }
-    return () => {
-      unsubscribe?.();
-      if (requestRef.current) gate.cancel(requestRef.current);
-      requestRef.current = null;
-      if (!requestGate) localGate.dispose();
-    };
-  }, [cancel, gate, localGate, requestGate]);
+  // 로그아웃·계정 변경 때만 취소한다. 탭 복귀 때 오는 같은 계정 신호로는 끊지 않는다.
+  useCancelOnSignOut(cancel);
+
+  useEffect(() => () => {
+    if (requestRef.current) gate.cancel(requestRef.current);
+    requestRef.current = null;
+    if (!requestGate) localGate.dispose();
+  }, [gate, localGate, requestGate]);
 
   async function run(kind: Kind) {
     if (!channelId || requestRef.current || (kind === "search" && !query.trim())) return;

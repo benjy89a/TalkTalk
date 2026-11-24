@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { consumeSearchEscape } from "./searchKeyboard";
+import { useCancelOnSignOut } from "./useCancelOnSignOut";
 import {
   MessageSearchError,
   SEARCH_KEYWORD_MAX_LENGTH,
@@ -51,19 +52,9 @@ export default function MessageSearch({ onSelect }: MessageSearchProps) {
     };
   }, [closeResults]);
 
-  useEffect(() => {
-    // 계정이 바뀌거나 로그아웃하면 이전 계정의 검색 결과를 지운다.
-    // 환경변수가 없을 때는 화면을 유지하고 검색 시 설정 안내를 표시한다.
-    try {
-      const supabase = createClient();
-      const { data } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "SIGNED_OUT" || event === "SIGNED_IN") closeResults();
-      });
-      return () => data.subscription.unsubscribe();
-    } catch {
-      // 실제 조회를 시작할 때 연결 설정 오류를 처리한다.
-    }
-  }, [closeResults]);
+  // 로그아웃하거나 다른 계정으로 바뀌면 이전 계정의 검색 결과를 지운다.
+  // 탭 복귀 때 오는 같은 계정의 SIGNED_IN 으로는 결과를 닫지 않는다.
+  useCancelOnSignOut(closeResults);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

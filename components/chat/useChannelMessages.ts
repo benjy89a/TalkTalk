@@ -6,6 +6,8 @@
 //      (실시간 재연결 / 탭으로 돌아옴 / 와이파이 다시 켜짐)
 // B-5: 원본 메시지마다 답글 수 · 마지막 답글 시간 (답글 자체는 본문에 안 보여준다)
 // B-6: 무한스크롤 — 맨 위로 올리면 "가장 오래된 id 보다 작은" 메시지 50개를 더 불러온다
+// 메시지로 이동: 화면에 없는 메시지는 그 앞뒤 25개씩을 새로 불러온다(jumpTo). 그 뒤에 더 최신 메시지가 있으면
+//      detached = true → 실시간 새 메시지를 끝에 붙이지 않고(중간이 비므로) "최신 메시지로" 버튼을 보여준다
 // 대량 메시지: 화면에는 최대 500개(MAX_RENDERED)만 쌓고, 재연결 때 놓친 게 200개(CATCH_UP_LIMIT) 넘으면 최신 50개로 새로 불러온다
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -70,6 +72,9 @@ export function useChannelMessages(channelId: string) {
     const t = setTimeout(() => setNoticeState(null), 5000);
     return () => clearTimeout(t);
   }, [noticeState]);
+  // 메시지로 이동해서 예전 메시지 구간을 보는 중 (그 뒤 최신 메시지는 안 불러온 상태)
+  const [detached, setDetached] = useState(false);
+  const detachedRef = useRef(false);
   const loadingOlderRef = useRef(false);
   const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
@@ -124,6 +129,8 @@ export function useChannelMessages(channelId: string) {
       setMessages([]);
       setReplyStats({});
       setHasMore(false);
+      setDetached(false);
+      detachedRef.current = false;
       seenReplyIds.current = new Map();
 
       // 최근 50개 = id 큰 순으로 50개 → 화면에는 오래된 순으로 보여준다
@@ -190,6 +197,56 @@ export function useChannelMessages(channelId: string) {
     }
   }, [channelId, loadReplyStats]);
 
+  // ---- 메시지로 이동: 화면에 없는 메시지면 그 앞뒤를 새로 불러온다 ----
+  // 성공하면 true (그 메시지가 목록에 들어옴), 없거나 실패하면 false
+  const jumpTo = useCallback(
+    async (targetId: number) => {
+      const half = PAGE_SIZE / 2;
+      const supabase = createClient();
+      try {
+        const [beforeRes, afterRes] = await Promise.all([
+          // 그 메시지 포함 이전 25개
+          supabase
+            .from("messages")
+            .select(MESSAGE_SELECT)
+            .eq("channel_id", channelId)
+            .is("parent_id", null)
+            .lte("id", targetId)
+            .order("id", { ascending: false })
+            .limit(half),
+          // 이후 25개 (+1 로 더 최신 메시지가 남았는지 확인)
+          supabase
+            .from("messages")
+            .select(MESSAGE_SELECT)
+            .eq("channel_id", channelId)
+            .is("parent_id", null)
+            .gt("id", targetId)
+            .order("id")
+            .limit(half + 1),
+        ]);
+        if (beforeRes.error) throw beforeRes.error;
+        if (afterRes.error) throw afterRes.error;
+        const before = beforeRes.data as ChatMessage[];
+        const afterAll = afterRes.data as ChatMessage[];
+        if (!before.some((m) => m.id === targetId)) return false; // 지워졌거나 볼 권한 없음
+        const newer = afterAll.length > half;
+        const rows = [...before, ...afterAll.slice(0, half)];
+        detachedRef.current = newer;
+        setDetached(newer);
+        seenReplyIds.current = new Map();
+        setReplyStats({});
+        setMessages(mergeById([], rows));
+        setHasMore(before.length === half);
+        await loadReplyStats(rows, () => false);
+        return true;
+      } catch (err) {
+        console.error("[chat] 메시지로 이동 실패", err);
+        return false;
+      }
+    },
+    [channelId, loadReplyStats],
+  );
+
   // 대량 메시지: 최대 개수를 넘으면 가장 오래된 것부터 뺀다
   // (위쪽을 읽는 중에 빼면 화면이 튀므로, 맨 아래를 보고 있을 때 MessageList 가 부른다)
   const trimOld = useCallback(() => {
@@ -202,7 +259,8 @@ export function useChannelMessages(channelId: string) {
     (rows: ChatMessage[]) => {
       rememberLastId(channelId, rows);
       const roots = rows.filter((r) => r.parent_id === null);
-      if (roots.length) setMessages((prev) => mergeById(prev, roots));
+      // 예전 구간을 보는 중이면 새 메시지를 끝에 붙이지 않는다 (사이에 안 불러온 메시지가 있어 순서가 끊겨 보임)
+      if (roots.length && !detachedRef.current) setMessages((prev) => mergeById(prev, roots));
       addReplies(rows);
     },
     [channelId, addReplies],
@@ -384,5 +442,7 @@ export function useChannelMessages(channelId: string) {
     capped,
     trimOld,
     notice,
+    jumpTo,
+    detached,
   };
 }

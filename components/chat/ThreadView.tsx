@@ -10,6 +10,7 @@ import MessageInput from "./MessageInput";
 import MessageItem from "./MessageItem";
 import MessageRows from "./MessageRows";
 import { mergeWithOutbox, useOutbox } from "./outbox";
+import { clearThreadFocus, useThreadFocus } from "./focus";
 import { closeThread, useOpenThread } from "./threads";
 import { MAX_RENDERED } from "./types";
 import { useCurrentUserId } from "./useCurrentUserId";
@@ -77,11 +78,20 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
     if (myId) toggleReaction(messageId, emoji, myId, alreadyMine);
   };
 
-  const { scrollRef, contentRef, onScroll, scrollToBottom, unseen } = useStickToBottom(
+  const { scrollRef, contentRef, onScroll, scrollToBottom, scrollToMessage, unseen } = useStickToBottom(
     replies,
     status === "ready",
     String(rootId),
   );
+
+  // 검색 결과로 답글을 고르면 (focus.ts) 그 답글로 스크롤 + 잠깐 강조
+  const focus = useThreadFocus();
+  useEffect(() => {
+    if (!focus || focus.channelId !== channelId || status !== "ready") return;
+    // 아직 안 그려졌으면 다음에 다시 (답글이 500개를 넘어 생략된 오래된 답글이면 찾지 못하고 끝냄)
+    if (!scrollToMessage(focus.messageId) && replies.some((m) => m.id === focus.messageId)) return;
+    clearThreadFocus(focus);
+  }, [focus, channelId, status, replies, scrollToMessage]);
 
   return (
     // h-full: 바깥 패널 칸(팀장님 ThreadPanel 의 overflow-y-auto 칸) 높이에 딱 맞춘다.
@@ -143,7 +153,13 @@ function OpenedThread({ channelId, rootId }: { channelId: string; rootId: number
               )}
 
               {/* 답글 목록 */}
-              <MessageRows messages={replies} myId={myId} wide reactions={reactions} onReact={onReact} />
+              <MessageRows
+                messages={replies}
+                myId={myId}
+                wide
+                reactions={reactions}
+                onReact={onReact}
+              />
             </div>
           </div>
           <NewMessagesButton count={unseen} onClick={scrollToBottom} />

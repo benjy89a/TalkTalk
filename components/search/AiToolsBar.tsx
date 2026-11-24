@@ -6,6 +6,7 @@ import { requestChannelSummary, SummaryRequestError } from "./summaryClient";
 import AiExtraTools from "./AiExtraTools";
 import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
 import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
+import { useCancelOnSignOut } from "./useCancelOnSignOut";
 
 type Props = { channelId: string | null };
 /** 결과의 메시지를 눌렀을 때 호출된다 (CONTRACTS.md 3번 "메시지로 이동 규격"). 없으면 결과는 눌러지지 않는다. */
@@ -71,6 +72,9 @@ function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
     if (requestRef.current) gate.cancel(requestRef.current);
     else setState({ status: "idle" });
   }
+
+  // 로그아웃·계정 변경 때만 요약을 취소하고 이전 계정의 결과를 지운다. 탭 복귀로는 끊지 않는다.
+  useCancelOnSignOut(cancel);
 
   async function summarize() {
     if (!channelId || requestRef.current) return;
