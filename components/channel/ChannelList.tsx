@@ -17,6 +17,9 @@
 // 배지 칸 (CONTRACTS.md — D 의 UnreadBadge 등을 채널 줄 오른쪽 끝에 끼움):
 //   <ChannelList ... renderBadge={(id) => <UnreadBadge channelId={id} />} />
 //   renderBadge 를 안 넘기거나 null 을 돌려주면 아무것도 그리지 않는다.
+//
+// 채널 이름 옆 "(13명)": 그 채널의 전체 멤버 수. 내가 멤버인 채널의 멤버 줄은 RLS 상 읽을 수 있어서
+// 한 번에 가져와 센다. 목록을 다시 불러올 때(refreshKey) 함께 새로 센다.
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Channel } from "@/types/database";
@@ -42,6 +45,7 @@ export default function ChannelList({
   renderBadge,
 }: Props) {
   const [channels, setChannels] = useState<ChannelItem[] | null>(null);
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,6 +76,22 @@ export default function ChannelList({
           .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
         if (!cancelled) setChannels(list);
+
+        // 채널별 멤버 수 (실패해도 목록은 그대로 보여 주고 숫자만 뺀다)
+        if (list.length > 0) {
+          const { data: rows, error: countError } = await supabase
+            .from("channel_members")
+            .select("channel_id")
+            .in(
+              "channel_id",
+              list.map((c) => c.id),
+            );
+          if (!countError && !cancelled) {
+            const counts: Record<string, number> = {};
+            for (const r of rows ?? []) counts[r.channel_id] = (counts[r.channel_id] ?? 0) + 1;
+            setMemberCounts(counts);
+          }
+        }
       } catch {
         if (!cancelled) {
           setChannels([]);
@@ -112,6 +132,7 @@ export default function ChannelList({
         const selected = channel.id === selectedChannelId;
         const isPrivate = channel.type === "private";
         const unread = !selected && (isUnread?.(channel.id) ?? false);
+        const count = memberCounts[channel.id];
         return (
           <li key={channel.id}>
             <button
@@ -123,11 +144,17 @@ export default function ChannelList({
               <span aria-hidden="true" className="w-4 shrink-0 text-center text-white/60">
                 {isPrivate ? "🔒" : "#"}
               </span>
-              <span
-                className={`min-w-0 flex-1 truncate ${unread ? "font-bold text-white" : ""}`}
-              >
+              <span className={`min-w-0 truncate ${unread ? "font-bold text-white" : ""}`}>
                 {channel.name}
               </span>
+              {/* 이름이 길면 이름만 줄이고, 인원수는 항상 보이게 */}
+              {count !== undefined && (
+                <span className="shrink-0 text-xs font-normal text-white/50">
+                  <span aria-hidden="true">({count}명)</span>
+                  <span className="sr-only">멤버 {count}명</span>
+                </span>
+              )}
+              <span className="flex-1" aria-hidden="true" />
               {isPrivate && <span className="sr-only">(비공개 채널)</span>}
               {unread && <span className="sr-only">(안 읽은 메시지 있음)</span>}
               {renderBadge?.(channel.id)}

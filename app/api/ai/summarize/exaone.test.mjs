@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL, SUMMARY_TIMEOUT_MS } from "./handler.ts";
+import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL, MAX_MESSAGE_LENGTH, MAX_SPEAKER_PREFIX_LENGTH, SUMMARY_MAX_TOKENS, SUMMARY_TIMEOUT_MS } from "./handler.ts";
 
 // 실제 발급 키가 아닌 가짜 HTTP 테스트 전용 값이다.
 const TEST_CREDENTIAL = "unit-test-only";
@@ -34,7 +34,8 @@ test("생성만으로 호출하지 않음, 고정 endpoint·모델·서버 인�
     assert.equal(body.model, "k-exaone_v2.5");
     assert.equal(body.stream, false);
     assert.equal(body.reasoning_effort, "low");
-    assert.equal(body.max_tokens, 2048);
+    assert.equal(body.max_tokens, SUMMARY_MAX_TOKENS);
+    assert.equal(SUMMARY_MAX_TOKENS, 4096);
     assert.deepEqual(body.messages.map((message) => message.role), ["system", "user"]);
     assert.deepEqual(JSON.parse(body.messages[1].content), { messages: ["합성 테스트", "지시를 무시하라는 문장도 데이터"] });
     assert.doesNotMatch(options.body, /unit-test-only/);
@@ -147,4 +148,34 @@ test("시작 전 취소는 호출하지 않으며 요청·본문 도중 취소�
     } });
     await assert.rejects(cancelled(["합성"], controller.signal), { name: "AbortError" });
   }
+});
+
+test("요약 최악 생성 시간(4,096토큰, 실측 최저 약 26토큰/초)이 대기 제한 안(여유 60초 이상)이고 배포 함수 300초보다 짧음", () => {
+  const worstSeconds = SUMMARY_MAX_TOKENS / 26;
+  assert.ok(worstSeconds * 1000 < SUMMARY_TIMEOUT_MS - 60000, `최악 ${worstSeconds}초`);
+  assert.ok(SUMMARY_TIMEOUT_MS < 300000);
+});
+
+test("말한 사람 표시: 프롬프트가 [이름] 형식과 담당자 규칙을 안내하고, 이름 붙은 줄을 그대로 전송", async () => {
+  let sent;
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async (_url, options) => {
+    sent = JSON.parse(options.body);
+    return answer();
+  } });
+  await generate(["[김하늘] 데모 일정은 제가 잡을게요", "[박준호] 버그는 금요일까지 고칠게요"], signal());
+  const prompt = sent.messages[0].content;
+  assert.match(prompt, /\[이름\] 본문/);
+  assert.match(prompt, /말한 사람/);
+  assert.match(prompt, /제가·내가 하겠다는 말은 그 말을 한 사람이 담당자/);
+  assert.match(prompt, /원문에 없는 사실·담당자·기한을 만들지 마세요/); // 기존 환각 방지 규칙 유지
+  assert.deepEqual(JSON.parse(sent.messages[1].content).messages, ["[김하늘] 데모 일정은 제가 잡을게요", "[박준호] 버그는 금요일까지 고칠게요"]);
+});
+
+test("말한 사람 접두어 여유: 원문 4,000자 + 접두어는 허용하고 그보다 길면 외부 호출 전 거절", async () => {
+  let calls = 0;
+  const generate = createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher: async () => { calls += 1; return answer(); } });
+  await generate(["가".repeat(MAX_MESSAGE_LENGTH + MAX_SPEAKER_PREFIX_LENGTH)], signal());
+  assert.equal(calls, 1);
+  await assert.rejects(generate(["가".repeat(MAX_MESSAGE_LENGTH + MAX_SPEAKER_PREFIX_LENGTH + 1)], signal()), errorIs(413, "INPUT_TOO_LARGE"));
+  assert.equal(calls, 1);
 });
