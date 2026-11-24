@@ -7,7 +7,7 @@
 //
 // sendFiles({ channelId, parentId?, files })
 //   첨부 버튼이 쓰는 함수. "📎 파일이름" 메시지를 먼저 만들고, 그 메시지에 파일들을 붙인다.
-//   파일이 하나도 안 올라가면 만든 메시지를 지운다 (빈 첨부 메시지가 남지 않게).
+//   파일이 하나도 안 올라가면 만든 메시지를 soft_delete_message 로 지운다 (빈 첨부 메시지가 남지 않게).
 import { createClient } from "@/lib/supabase/client";
 import type { Attachment } from "@/types/database";
 import { buildAttachmentPath, fileMessageContent, validateFiles } from "./fileRules";
@@ -108,8 +108,10 @@ export async function sendFiles(input: {
   });
 
   // 3) 하나도 못 올렸으면 메시지도 지운다
+  //    팀 규칙(005): 삭제는 soft_delete_message 로 → 다른 사람 화면에도 "삭제된 메시지"로 바로 반영됨
   if (uploaded.length === 0) {
-    await supabase.from("messages").delete().eq("id", message.id);
+    const { error: deleteError } = await supabase.rpc("soft_delete_message", { mid: message.id });
+    if (deleteError) console.error("[attachments] 빈 첨부 메시지 삭제 실패:", deleteError.message);
     throw new Error(failed[0]?.reason ?? "파일을 올리지 못했어요.");
   }
 

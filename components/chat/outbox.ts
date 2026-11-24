@@ -170,18 +170,23 @@ export function updateSent(id: number, patch: MessagePatch) {
 
 // 서버에서 불러온 목록 + 내가 보낸(저장된) 메시지 + 보내는 중 메시지를 합친다
 // parentId 가 null 이면 채널 본문, 숫자면 그 스레드
+// upToLoaded: 메시지로 이동해서 예전 구간을 보는 중 → 불러온 마지막 메시지보다 최신인 건 붙이지 않는다 (사이가 비므로)
 export function mergeWithOutbox(
   loaded: ChatMessage[],
   outbox: State,
   channelId: string,
   parentId: number | null,
+  upToLoaded = false,
 ): DisplayMessage[] {
   const belongs = (m: ChatMessage) => m.channel_id === channelId && m.parent_id === parentId;
   const seen = new Set(loaded.map((m) => m.client_id));
   // 이미 불러온 목록보다 오래된 건 붙이지 않는다 (목록 맨 위 이전 메시지는 무한스크롤 담당)
   const oldestId = loaded[0]?.id ?? 0;
+  const newestId = upToLoaded ? (loaded.at(-1)?.id ?? 0) : Infinity;
 
-  const extra = outbox.sent.filter((m) => belongs(m) && !seen.has(m.client_id) && m.id > oldestId);
+  const extra = outbox.sent.filter(
+    (m) => belongs(m) && !seen.has(m.client_id) && m.id > oldestId && m.id <= newestId,
+  );
   const merged: DisplayMessage[] = extra.length
     ? [...loaded, ...extra].sort((a, b) => a.id - b.id)
     : loaded;
@@ -189,6 +194,7 @@ export function mergeWithOutbox(
   // 실시간 수신이 서버 응답보다 먼저 도착하면, 같은 메시지가 "보내는 중"과 "저장됨"으로 두 번 보일 수 있다
   // → 이미 목록에 있는 client_id 는 보내는 중 목록에서 뺀다
   for (const m of extra) seen.add(m.client_id);
+  if (upToLoaded) return merged;
   const pending = outbox.pending.filter((m) => belongs(m) && !seen.has(m.client_id));
   return pending.length ? [...merged, ...pending] : merged;
 }

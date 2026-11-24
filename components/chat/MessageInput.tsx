@@ -7,7 +7,9 @@
 // @멘션 자동완성 (D-3 useMentionAutocomplete): "@" 를 치면 입력창 위에 이름 목록. ↑↓ 이동 · Enter/Tab 선택 · Esc 닫기
 //   목록이 열려 있을 때 Enter 는 훅이 먼저 가로채므로(stopPropagation) 메시지가 전송되지 않는다
 // Enter: 전송 / Shift+Enter: 줄바꿈 / 최대 6줄까지 늘어나고 그 이상은 입력창 안에서 스크롤
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+// 😊 버튼 (작업 2): 이모지를 골라 커서 자리에 넣는다. 창은 여러 개 연달아 고를 수 있게 열린 채로 둠 (바깥 클릭 · Esc 로 닫힘)
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import EmojiPicker, { useDismiss } from "./EmojiPicker";
 import { useMentionAutocomplete } from "@/components/notifications/useMentionAutocomplete";
 import { wrapSelection } from "./formatText";
 import { MAX_LENGTH, sendMessage } from "./outbox";
@@ -42,6 +44,23 @@ export default function MessageInput({
   }, []);
   // @멘션 자동완성 (D) — 스레드 답글 입력창에도 자동 적용
   const mention = useMentionAutocomplete({ channelId, textareaRef: ref, text, setText });
+
+  // 이모지 고르기
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiRef = useRef<HTMLDivElement>(null);
+  const closeEmoji = useCallback(() => setEmojiOpen(false), []);
+  useDismiss(emojiRef, emojiOpen, closeEmoji);
+  function insertEmoji(emoji: string) {
+    const el = ref.current;
+    // 커서(또는 선택한 글자) 자리에 넣고, 커서를 이모지 뒤로
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  }
 
   const remaining = MAX_LENGTH - text.length;
   const tooLong = remaining < 0;
@@ -107,6 +126,18 @@ export default function MessageInput({
               : "border-gray-300 focus-visible:border-[#1e325c] focus-visible:ring-[#1e325c]"
           }`}
         />
+        <div ref={emojiRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setEmojiOpen((v) => !v)}
+            aria-label="이모지 넣기"
+            aria-expanded={emojiOpen}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-xl text-gray-500 transition-colors hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#1e325c] focus-visible:outline-none"
+          >
+            😊
+          </button>
+          {emojiOpen && <EmojiPicker onPick={insertEmoji} className="absolute right-0 bottom-full mb-2" />}
+        </div>
         <button
           type="button"
           onClick={submit}

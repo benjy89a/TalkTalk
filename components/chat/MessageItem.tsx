@@ -9,7 +9,8 @@
 // renderAttachments: 말풍선 아래에 첨부를 그릴 칸 (D 첨부 기능이 채움, CONTRACTS.md)
 //                    보내는 중/실패 메시지는 아직 DB id 가 없으므로 그리지 않는다
 // 내 메시지(저장된 것)에 마우스를 올리면 "수정 · 삭제" → 수정은 말풍선 자리에서 바로 (Enter 저장 · Esc 취소)
-import { useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import EmojiPicker, { useDismiss } from "./EmojiPicker";
 import { deleteMessage, editMessage } from "./messageActions";
 import { REACTION_EMOJIS, type ReactionSummary } from "./useReactions";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
@@ -54,7 +55,22 @@ export default function MessageItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const [picking, setPicking] = useState(false); // 이모지 고르는 창
+  // 이모지 고르는 창: quick = 자주 쓰는 6개 줄, full = 전체 고르기 창 (작업 2)
+  const [picking, setPicking] = useState<null | "quick" | "full">(null);
+  const [pickBelow, setPickBelow] = useState(false); // 목록 맨 위 근처면 아래로 연다 (위로 열면 잘림)
+  const rowRef = useRef<HTMLDivElement>(null);
+  const closePicker = useCallback(() => setPicking(null), []);
+  // 바깥 클릭 · Esc 로 닫기 (예전엔 마우스가 말풍선 줄을 벗어나면 닫혀서, 창을 누르러 가는 사이 사라졌다)
+  useDismiss(rowRef, picking !== null, closePicker);
+  function openPicker(kind: "quick" | "full") {
+    const row = rowRef.current;
+    const box = row?.closest(".overflow-y-auto");
+    if (row && box) {
+      const room = row.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      setPickBelow(room < (kind === "full" ? 280 : 48));
+    }
+    setPicking(kind);
+  }
   const [confirming, setConfirming] = useState(false); // 삭제 확인 줄
   const [actionError, setActionError] = useState<string | null>(null); // 수정·삭제 실패 안내
   // 소프트 삭제된 메시지 (팀장님 005): 줄은 남고 내용은 비어 있음 → 카톡처럼 "삭제된 메시지입니다"
@@ -173,8 +189,8 @@ export default function MessageItem({
     <button
       type="button"
       aria-label="이모지 반응 달기"
-      aria-expanded={picking}
-      onClick={() => setPicking((v) => !v)}
+      aria-expanded={picking !== null}
+      onClick={() => (picking ? setPicking(null) : openPicker("quick"))}
       className={`${picking ? "visible" : "invisible"} shrink-0 rounded px-1 text-[13px] leading-4 text-gray-500 group-hover:visible hover:text-[#1e325c] focus-visible:visible`}
     >
       😊+
@@ -182,31 +198,43 @@ export default function MessageItem({
   ) : null;
   // 고르는 창은 버튼이 아니라 말풍선 줄 기준으로 띄운다 → 좁은 스레드 패널에서도 화면 밖으로 잘리지 않음
   // (상대 메시지는 말풍선 왼쪽 끝부터, 내 메시지는 오른쪽 끝부터)
+  const isMine = (emoji: string) => !!reactions?.find((r) => r.emoji === emoji && r.mine);
+  const pick = (emoji: string) => {
+    setPicking(null);
+    onReact?.(emoji, isMine(emoji));
+  };
+  const place = `absolute ${pickBelow ? "top-full mt-1" : "bottom-full mb-1"} ${mine ? "right-0" : "left-0"}`;
   const picker =
-    canReact && picking ? (
+    canReact && picking === "quick" ? (
       <span
         role="menu"
-        className={`absolute bottom-full z-20 mb-1 flex gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-1 shadow-md ${mine ? "right-0" : "left-0"}`}
+        className={`${place} z-20 flex gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-1 shadow-md`}
       >
-        {REACTION_EMOJIS.map((emoji) => {
-          const already = !!reactions?.find((r) => r.emoji === emoji && r.mine);
-          return (
-            <button
-              key={emoji}
-              type="button"
-              role="menuitem"
-              aria-label={`${emoji} 반응`}
-              onClick={() => {
-                setPicking(false);
-                onReact?.(emoji, already);
-              }}
-              className={`rounded-full px-1 text-lg leading-6 transition-transform hover:scale-125 ${already ? "bg-blue-50" : ""}`}
-            >
-              {emoji}
-            </button>
-          );
-        })}
+        {REACTION_EMOJIS.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            role="menuitem"
+            aria-label={`${emoji} 반응`}
+            onClick={() => pick(emoji)}
+            className={`rounded-full px-1 text-lg leading-6 transition-transform hover:scale-125 ${isMine(emoji) ? "bg-blue-50" : ""}`}
+          >
+            {emoji}
+          </button>
+        ))}
+        {/* 더 많은 이모지 */}
+        <button
+          type="button"
+          role="menuitem"
+          aria-label="다른 이모지 고르기"
+          onClick={() => openPicker("full")}
+          className="rounded-full px-1.5 text-lg leading-6 text-gray-500 hover:bg-gray-100 hover:text-[#1e325c]"
+        >
+          ＋
+        </button>
       </span>
+    ) : canReact && picking === "full" ? (
+      <EmojiPicker onPick={pick} selected={isMine} className={place} />
     ) : null;
   // 말풍선 아래 반응 칩: 누르면 달기/취소, 내가 누른 건 파랗게
   const reactionChips =
@@ -285,10 +313,7 @@ export default function MessageItem({
   if (mine) {
     return (
       <div className={`group flex flex-col items-end rounded-md px-2 ${rowBg} ${first ? "mt-3" : "mt-1"}`}>
-        <div
-          className={`relative flex ${maxW} items-end gap-1.5`}
-          onMouseLeave={() => setPicking(false)}
-        >
+        <div ref={rowRef} className={`relative flex ${maxW} items-end gap-1.5`}>
           {picker}
           {ownActions}
           {reactButton}
@@ -358,10 +383,7 @@ export default function MessageItem({
       </div>
       <div className="min-w-0 flex-1">
         {first && <p className="mb-1 text-xs leading-5 font-semibold text-gray-700">{name}</p>}
-        <div
-          className={`relative flex ${maxW} items-end gap-1.5`}
-          onMouseLeave={() => setPicking(false)}
-        >
+        <div ref={rowRef} className={`relative flex ${maxW} items-end gap-1.5`}>
           {picker}
           {deleted ? deletedBubble : <p className={`${BUBBLE} bg-gray-100 text-gray-900`}>{formatText(message.content, false)}</p>}
           {side}
