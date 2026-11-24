@@ -281,7 +281,11 @@ function validatePlan(value: unknown): SearchPlan {
   const from = instant(value.from);
   const to = instant(value.to);
   if (from && to && from >= to) return invalidAi();
-  if (!value.keywords.length && !(from && to)) return invalidAi();
+  // 키워드도 기간도 정하지 못한 건 AI 응답이 깨진 게 아니라 질문이 모호한 경우다(프롬프트가 그렇게 답하라고 지시한다).
+  // 형식 오류(502)와 구분해 사용자가 질문을 고칠 수 있게 입력 안내(400)로 돌려준다.
+  if (!value.keywords.length && !(from && to)) {
+    throw new ExtraError(400, "INVALID_QUERY", "검색할 키워드나 기간을 찾지 못했습니다. 예: '지난주 배포 얘기'처럼 찾을 단어나 기간을 구체적으로 적어 주세요.");
+  }
   return { keywords: (value.keywords as string[]).map((word) => word.trim()), from, to };
 }
 
