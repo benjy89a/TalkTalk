@@ -3,6 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { createExaoneExtra, handleNaturalSearch } from "../extra";
 
+// 업체 응답 대기 240초에 인증·DB 검색·응답 처리 여유를 둔다.
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   return handleNaturalSearch(request, createClient, createExaoneExtra({ apiKey: process.env.EXAONE_API_KEY }).interpret);
 }

@@ -1,8 +1,8 @@
 // 모든 HTTP는 가짜 fetch다. 환경변수를 읽거나 실제 EXAONE을 호출하지 않는다.
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL } from "./handler.ts";
+import { createExaoneSummary, EXAONE_MODEL, EXAONE_SUMMARY_URL, SUMMARY_TIMEOUT_MS } from "./handler.ts";
 
 // 실제 발급 키가 아닌 가짜 HTTP 테스트 전용 값이다.
 const TEST_CREDENTIAL = "unit-test-only";
@@ -53,6 +53,28 @@ test("키 누락·빈 키·줄바꿈과 잘못된 입력은 외부 호출 전 �
   }
   await assert.rejects(createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher })([], signal()), errorIs(400, "INVALID_MESSAGES"));
   assert.equal(calls, 0);
+});
+
+test("기본 대기 240초: 지연 응답은 이전 25초 제한에 실패하고 기본값에서 성공 (시간 축소·가짜 HTTP)", async () => {
+  assert.equal(SUMMARY_TIMEOUT_MS, 240000);
+  assert.ok(SUMMARY_TIMEOUT_MS < 300000);
+  const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+  const requested = [];
+  const timer = mock.method(AbortSignal, "timeout", (ms) => {
+    requested.push(ms);
+    // 실제로 25~240초를 기다리지 않는다. 25초→25ms, 240초→240ms.
+    return originalTimeout(ms / 1000);
+  });
+  try {
+    const fetcher = async (_url, options) => {
+      // 업체 응답 60초 지연을 60ms로 축소한다. 외부 요청 없음.
+      await delay(60, undefined, { signal: options.signal });
+      return answer();
+    };
+    await assert.rejects(createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher, timeoutMs: 25000 })(["합성"], signal()), errorIs(504, "AI_TIMEOUT"));
+    assert.equal(await createExaoneSummary({ apiKey: TEST_CREDENTIAL, fetcher })(["합성"], signal()), "테스트용 최종 요약");
+    assert.deepEqual(requested, [25000, SUMMARY_TIMEOUT_MS]);
+  } finally { timer.mock.restore(); }
 });
 
 test("업체 오류 상태 정제·본문 미파싱·자동 재시도 없음", async (t) => {

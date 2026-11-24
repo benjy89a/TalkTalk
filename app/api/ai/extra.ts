@@ -7,7 +7,7 @@ export const EXTRA_MAX_TEXT_LENGTH = 20000;
 // 무료 EXAONE API는 출력 속도가 느려(공개 측정 약 20토큰/초) max_tokens 4,096을
 // 모두 쓰면 생성에만 약 205초가 걸릴 수 있다. 추출은 그 최악의 경우를 덮도록 두고,
 // 배포 함수 실행 한도(현재 Vercel 기본/최대 300초)보다는 짧게 잡는다.
-export const SEARCH_TIMEOUT_MS = 25000;
+export const SEARCH_TIMEOUT_MS = 240000;
 export const EXTRACT_TIMEOUT_MS = 240000;
 
 type ClientFactory = () => Promise<SupabaseClient<Database>>;

@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from "react";
 import { requestChannelSummary, SummaryRequestError } from "./summaryClient";
 import AiExtraTools from "./AiExtraTools";
+import { createAiRequestGate, type AiRequest, type AiRequestGate } from "./aiRequestGate";
+import AiRequestProgress, { useAiRequest } from "./AiRequestProgress";
 
 type Props = { channelId: string | null };
 type SummaryState =
@@ -14,15 +16,25 @@ type SummaryState =
 
 export default function AiToolsBar({ channelId }: Props) {
   // 채널 변경 시 이전 채널의 결과·요청 상태를 함께 초기화한다.
+  return <ChannelAiTools key={channelId ?? "no-channel"} channelId={channelId} />;
+}
+
+function ChannelAiTools({ channelId }: Props) {
   // 채팅 영역을 밀어내지 않도록 평소에는 버튼 한 줄만 보이고,
   // 열면 입력창 위에 떠 있는 패널(최대 높이 제한·스크롤)로 보여 준다. 닫아도 결과는 유지된다.
   const [open, setOpen] = useState(false);
+  const [gate] = useState(createAiRequestGate);
+  const active = useAiRequest(gate);
+  useEffect(() => () => gate.dispose(), [gate]);
   return (
     <div className="relative" onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); } }}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
-        className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">
-        ✨ AI 도구 {open ? "▾" : "▴"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
+          className="min-h-9 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c]">
+          ✨ AI 도구 {open ? "▾" : "▴"}{active ? " · 실행 중" : ""}
+        </button>
+        {active && <AiRequestProgress request={active} onCancel={() => gate.cancel()} background={!open} />}
+      </div>
       <div role="region" aria-label="AI 도구" hidden={!open}
         className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[55vh] space-y-4 overflow-y-auto rounded-md border border-gray-200 bg-white p-4 shadow-lg">
         <div className="flex items-center justify-between">
@@ -30,41 +42,46 @@ export default function AiToolsBar({ channelId }: Props) {
           <button type="button" onClick={() => setOpen(false)} aria-label="AI 도구 닫기"
             className="rounded-md px-2 py-1 text-gray-600 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#1e325c]">✕ 닫기</button>
         </div>
-        <ChannelSummary key={channelId ?? "no-channel"} channelId={channelId} />
-        <AiExtraTools channelId={channelId} />
+        {active && <p className="text-xs leading-5 text-gray-600">다른 AI 작업은 완료·취소 후 사용할 수 있습니다. 패널을 닫아도 계속 처리됩니다. 취소해도 업체에서 이미 처리한 사용량은 되돌릴 수 없습니다.</p>}
+        <ChannelSummary channelId={channelId} gate={gate} />
+        <AiExtraTools channelId={channelId} requestGate={gate} />
       </div>
     </div>
   );
 }
 
-function ChannelSummary({ channelId }: Props) {
+function ChannelSummary({ channelId, gate }: Props & { gate: AiRequestGate }) {
   const [limit, setLimit] = useState(50);
   const [state, setState] = useState<SummaryState>({ status: "idle" });
-  const requestRef = useRef<AbortController | null>(null);
+  const requestRef = useRef<AiRequest | null>(null);
+  const busy = useAiRequest(gate) !== null;
 
   useEffect(() => () => {
-    requestRef.current?.abort();
+    if (requestRef.current) gate.cancel(requestRef.current);
     requestRef.current = null;
-  }, []);
+  }, [gate]);
 
   function cancel() {
-    requestRef.current?.abort();
-    requestRef.current = null;
-    setState({ status: "idle" });
+    if (requestRef.current) gate.cancel(requestRef.current);
+    else setState({ status: "idle" });
   }
 
   async function summarize() {
-    if (!channelId) return;
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
+    if (!channelId || requestRef.current) return;
+    const request = gate.start("summary", () => {
+      requestRef.current = null;
+      setState({ status: "idle" });
+    });
+    if (!request) return;
+    const controller = request.controller;
+    requestRef.current = request;
     setState({ status: "loading" });
     try {
       const summary = await requestChannelSummary(channelId, limit, controller.signal);
-      if (controller.signal.aborted || requestRef.current !== controller) return;
+      if (controller.signal.aborted || requestRef.current !== request) return;
       setState({ status: "success", summary });
     } catch (error) {
-      if (controller.signal.aborted || requestRef.current !== controller) return;
+      if (controller.signal.aborted || requestRef.current !== request) return;
       setState({
         status: "error",
         code: error instanceof SummaryRequestError ? error.code : "NETWORK_ERROR",
@@ -72,7 +89,8 @@ function ChannelSummary({ channelId }: Props) {
           ? error.message : "연결 상태를 확인하고 다시 시도해 주세요.",
       });
     } finally {
-      if (requestRef.current === controller) requestRef.current = null;
+      if (requestRef.current === request) requestRef.current = null;
+      gate.finish(request);
     }
   }
 
@@ -83,7 +101,7 @@ function ChannelSummary({ channelId }: Props) {
           요약 범위
           <select
             value={limit}
-            disabled={state.status === "loading"}
+            disabled={busy}
             onChange={(event) => {
               cancel();
               setLimit(Number(event.target.value));
@@ -96,20 +114,17 @@ function ChannelSummary({ channelId }: Props) {
         <button
           type="button"
           onClick={summarize}
-          disabled={!channelId || state.status === "loading"}
+          disabled={!channelId || busy}
           className="inline-flex min-h-9 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e325c] disabled:pointer-events-none disabled:opacity-50"
         >
           {state.status === "loading" ? "요약 준비 중…" : "대화 요약"}
         </button>
-        {state.status === "loading" && (
-          <button type="button" onClick={cancel} className="rounded-md px-3 py-2 text-gray-600 focus-visible:ring-2 focus-visible:ring-[#1e325c]">취소</button>
-        )}
       </div>
       <p className="text-xs leading-5 text-gray-600">
         선택한 범위의 대화가 외부 EXAONE으로 전송됩니다. 허용된 대화에만 사용해 주세요. 서버 설정과 API 한도에 따라 이용이 제한될 수 있습니다.
         {!channelId && " 먼저 채널을 선택해 주세요."}
       </p>
-      {state.status === "loading" && <p role="status" className="text-gray-600">로그인·채널 권한을 확인하고 대화를 요약하고 있습니다.</p>}
+      {state.status === "loading" && <p role="status" className="text-gray-600">로그인·채널 권한을 확인하고 대화를 요약하고 있습니다. AI 응답은 최대 4분 정도 기다립니다. 취소할 수 있습니다.</p>}
       {state.status === "error" && (
         <p
           role={state.code === "AI_NOT_CONNECTED" ? "status" : "alert"}

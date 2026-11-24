@@ -120,6 +120,8 @@ export const unavailableSummary: SummaryGenerator = async () => {
 
 export const EXAONE_MODEL = "k-exaone_v2.5";
 export const EXAONE_SUMMARY_URL = "https://api.exaone.ai/v1/chat/completions";
+// 입력 개수를 줄여도 추론·생성이 25초를 넘을 수 있다. 배포 함수 한도(300초)보다 짧게 둔다.
+export const SUMMARY_TIMEOUT_MS = 240000;
 
 type ExaoneOptions = {
   apiKey?: string;
@@ -128,7 +130,7 @@ type ExaoneOptions = {
 };
 
 /** 서버 route가 키를 전달한다. 생성/불러오기만으로 외부 요청을 보내지 않는다. */
-export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = 25000 }: ExaoneOptions): SummaryGenerator {
+export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMARY_TIMEOUT_MS }: ExaoneOptions): SummaryGenerator {
   return async (messages, signal) => {
     signal.throwIfAborted();
     if (!apiKey?.trim() || /[\r\n]/.test(apiKey)) {
@@ -169,7 +171,7 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = 25000
           throw new SummaryError(429, "AI_RATE_LIMITED", "EXAONE 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.");
         }
         if (response.status === 408 || response.status === 504) {
-          throw new SummaryError(504, "AI_TIMEOUT", "요약 응답 시간이 초과됐습니다. 대화 범위를 줄여 다시 시도해 주세요.");
+          throw new SummaryError(504, "AI_TIMEOUT", "요약 응답 시간이 초과됐습니다. 잠시 후 다시 시도해 주세요. 반복되면 관리자에게 문의해 주세요.");
         }
         throw new SummaryError(502, "AI_SERVICE_ERROR", "EXAONE 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       }
@@ -199,7 +201,7 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = 25000
     } catch (error) {
       if (signal.aborted) throw signal.reason;
       if (timeout.aborted) {
-        throw new SummaryError(504, "AI_TIMEOUT", "요약 응답 시간이 초과됐습니다. 대화 범위를 줄여 다시 시도해 주세요.");
+        throw new SummaryError(504, "AI_TIMEOUT", "요약 응답 시간이 초과됐습니다. 잠시 후 다시 시도해 주세요. 반복되면 관리자에게 문의해 주세요.");
       }
       if (error instanceof SummaryError) throw error;
       throw new SummaryError(502, "AI_CONNECTION_FAILED", "EXAONE에 연결하지 못했습니다. 연결 상태를 확인해 주세요.");
