@@ -66,7 +66,7 @@ export function SidebarProfileSlot() {
 
 /** [E] 헤더 오른쪽 검색창 (연결 완료)
  *  결과를 누르면 그 채널로 가서 메시지 번호를 jumpToMessage 에 맡긴다 (CONTRACTS.md 3번).
- *  TODO(A): B 가 MessageList 에 focusMessageId 를 열면 MessageArea 에서 넘겨 실제 스크롤까지 이어진다. */
+ *  답글이면 원본으로 스크롤하고 스레드를 열어 답글을 강조한다 (B 의 focus.ts). */
 export function HeaderSearchSlot() {
   const { jumpToMessage } = useSelectedChannel();
   return <MessageSearch onSelect={jumpToMessage} />;

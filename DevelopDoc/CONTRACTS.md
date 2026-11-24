@@ -27,7 +27,7 @@
 | `MessageInput` | `channelId, parentId?, placeholder?` | `extras?: ReactNode` — 입력창 아래에 놓일 칸 (D) | 첨부 버튼 · @멘션 |
 
 - 읽음 처리: 지금은 `MessageList` 가 D 의 `useMarkAsRead` 를 직접 쓰고 있다 (B 가 이미 연결, 유지).
-- **메시지로 이동 (11/24 회의 확정)** — 아래 3번 "메시지로 이동 규격" 참고. B 는 `MessageList` 에 `focusMessageId?` · `onFocusHandled?` 를 연다.
+- **메시지로 이동 (11/24 회의 확정)** — 아래 3번 "메시지로 이동 규격" 참고. B 가 `focus.ts` 의 `focusMessage(channelId, messageId)` 로 구현 (#69, 연결 완료).
 
 ### C — `components/channel/`
 
@@ -65,14 +65,15 @@
 [E 검색 결과 클릭] ──onSelect(channelId, messageId)──▶ [A slots.tsx: jumpToMessage]
                                                          │ 채널이 다르면 채널 바꾸기
                                                          ▼
-                              [B MessageList  focusMessageId={messageId}  onFocusHandled={…}]
+                              [B focus.ts  focusMessage(channelId, messageId)]
+                               → MessageList·ThreadView 가 스크롤·강조·스레드 열기
 ```
 
 | 담당 | 해야 할 것 |
 |---|---|
-| **B** `components/chat/MessageList.tsx` | 선택 props 2개 추가: `focusMessageId?: number`, `onFocusHandled?: () => void`.<br>① `focusMessageId` 가 들어오면 그 메시지가 화면에 있는지 본다. 없으면(오래된 메시지) 그 메시지까지 이전 메시지를 더 불러온다.<br>② 그 위치로 스크롤하고 1~2초 강조(예: 노란 배경)한다.<br>③ **답글**(parent_id 가 있음)이면 본문에는 원본(root) 메시지로 스크롤하고 스레드 패널을 연다.<br>④ 삭제됐거나 권한이 없어 못 찾으면 이동하지 않고 끝낸다.<br>⑤ 성공이든 실패든 끝나면 **반드시 `onFocusHandled()` 를 한 번 부른다** (같은 결과를 다시 눌러도 다시 이동하도록 팀장이 값을 비운다). |
+| **B** `components/chat/focus.ts` ✅ (#69) | `focusMessage(channelId, messageId)` — 화면에 없으면 그 주변을 불러와 스크롤 + 2.5초 강조. 답글이면 원본으로 스크롤하고 스레드를 열어 답글 강조. 같은 결과를 다시 눌러도 다시 이동. (`MessageList` 의 `focusMessageId?` prop 도 같은 길로 동작) |
 | **E** `components/search/` | 상단 검색 `MessageSearch` 는 이미 `onSelect(channelId, messageId)` 를 부른다 → 그대로 유지.<br>`AiToolsBar` 에 선택 prop `onSelectMessage?: (channelId: string, messageId: number) => void` 추가.<br>AI 검색 결과 줄, 할 일의 근거 메시지 번호를 **클릭 가능하게** 하고 누르면 `onSelectMessage` 를 부른다. 부른 뒤 AI 도구 패널은 **닫는다**(채팅이 보이도록). |
-| **A** `components/layout/` | `ChannelContext` 의 `jumpToMessage(channelId, messageId)` 로 연결 (준비 완료). B·E 머지 후 `MessageList`·`AiToolsBar` 에 props 를 넘기기만 하면 끝. |
+| **A** `components/layout/` | `ChannelContext` 의 `jumpToMessage(channelId, messageId)` = 채널 바꾸기 + B 의 `focusMessage`. 상단 검색 연결 완료. E 가 `onSelectMessage` 를 열면 `AiToolsSlot` 에 `onSelectMessage={jumpToMessage}` 만 넘긴다. |
 
 - 메시지 번호(`messageId`)는 `messages.id` (bigint → 화면에서는 number) 그대로 쓴다.
 - 같은 채널 안에서 이동해도 `MessageList` 를 새로 그리지 않는다 (key 는 `channelId` 그대로).

@@ -11,6 +11,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { createClient } from "@/lib/supabase/client";
 import type { ChannelType } from "@/types/database";
 import { useUnread } from "@/components/notifications/useUnread";
+import { focusMessage } from "@/components/chat/focus";
 
 type Selected = {
   id: string;
@@ -40,10 +41,6 @@ type ChannelContextValue = {
   setSidebarOpen: (open: boolean) => void;
   // 검색 결과에서 메시지로 이동 (CONTRACTS.md 3번). 채널이 다르면 채널도 바꾼다
   jumpToMessage: (channelId: string, messageId: number) => void;
-  // 지금 이동해야 할 메시지 번호. MessageList 의 focusMessageId 로 넘긴다
-  focusMessageId: number | null;
-  // MessageList 가 이동을 끝내면 부른다 → 값을 비워 같은 결과를 다시 눌러도 다시 이동하게
-  clearFocusMessage: () => void;
 };
 
 type ChannelRow = { id: string; name: string; type: ChannelType };
@@ -128,8 +125,6 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const [channelListKey, setChannelListKey] = useState(0);
   const [dmListKey, setDmListKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // 검색 결과에서 이동할 메시지 번호 (jumpToMessage 가 채우고, MessageList 가 이동을 끝내면 비운다)
-  const [focusMessageId, setFocusMessageId] = useState<number | null>(null);
   // 미읽음 계산은 화면 전체에서 한 번만 한다 (채널 목록·DM 목록이 함께 쓴다)
   const { isUnread } = useUnread(selected?.id ?? null);
 
@@ -173,7 +168,6 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       setSelected({ id, name: null, type: null });
       setReady(true);
       setSidebarOpen(false); // 휴대폰에서 채널을 고르면 서랍을 닫고 대화 화면을 보여준다
-      setFocusMessageId(null); // 사이드바로 채널을 바꾸면 이전 검색 이동은 취소
       fillTitle(id, myId);
       if (myId) saveLastChannel(myId, id);
     },
@@ -181,16 +175,16 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
   );
 
   // 검색 결과 → 메시지로 이동. 같은 채널이면 채널을 다시 고르지 않는다 (헤더 깜빡임·목록 새로 그리기 방지)
+  // 실제 스크롤·강조·스레드 열기는 B 의 focusMessage 가 한다 (채널별로 기억하므로 채널이 바뀐 뒤에도 동작)
   const currentId = selected?.id ?? null;
   const jumpToMessage = useCallback(
     (channelId: string, messageId: number) => {
       if (channelId !== currentId) selectChannel(channelId);
       else setSidebarOpen(false);
-      setFocusMessageId(messageId);
+      void focusMessage(channelId, messageId);
     },
     [currentId, selectChannel],
   );
-  const clearFocusMessage = useCallback(() => setFocusMessageId(null), []);
 
   const refreshChannelList = useCallback(() => setChannelListKey((k) => k + 1), []);
   const refreshDmList = useCallback(() => setDmListKey((k) => k + 1), []);
@@ -260,13 +254,9 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
       sidebarOpen,
       setSidebarOpen,
       jumpToMessage,
-      focusMessageId,
-      clearFocusMessage,
     }),
     [
       jumpToMessage,
-      focusMessageId,
-      clearFocusMessage,
       selected,
       ready,
       selectChannel,
