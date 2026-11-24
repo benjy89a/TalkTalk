@@ -122,6 +122,12 @@ export const EXAONE_MODEL = "k-exaone_v2.5";
 export const EXAONE_SUMMARY_URL = "https://api.exaone.ai/v1/chat/completions";
 // 입력 개수를 줄여도 추론·생성이 25초를 넘을 수 있다. 배포 함수 한도(300초)보다 짧게 둔다.
 export const SUMMARY_TIMEOUT_MS = 240000;
+/**
+ * 요약의 max_tokens(추론 포함). 지어낸 대화 50개(2,112자) 실측 3회(2026-11-24)에서 필요량이 1,070~1,678토큰(생각 849~1,455)이라
+ * 기존 2,048은 최대 관측치의 82%로 여유가 작았다. 실제 대화는 더 길 수 있어 4,096으로 올린다(쓰지 않으면 비용 없음).
+ * 4,096을 모두 써도 실측 최저 속도(약 26토큰/초)로 약 158초라 240초 제한 안이다.
+ */
+export const SUMMARY_MAX_TOKENS = 4096;
 
 type ExaoneOptions = {
   apiKey?: string;
@@ -149,7 +155,7 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMA
           model: EXAONE_MODEL,
           stream: false,
           reasoning_effort: "low",
-          max_tokens: 2048,
+          max_tokens: SUMMARY_MAX_TOKENS,
           messages: [
             {
               role: "system",
@@ -188,7 +194,7 @@ export function createExaoneSummary({ apiKey, fetcher = fetch, timeoutMs = SUMMA
       }
       const choice: unknown = value.choices[0];
       if (choice && typeof choice === "object" && "finish_reason" in choice && choice.finish_reason === "length") {
-        throw new SummaryError(502, "AI_OUTPUT_TRUNCATED", "요약 생성이 중간에 끝났습니다. 대화 범위를 줄여 다시 시도해 주세요.");
+        throw new SummaryError(502, "AI_OUTPUT_TRUNCATED", "요약 생성이 중간에 끝났습니다. 다시 시도해 주세요. 반복되면 대화 범위를 줄여 보세요.");
       }
       if (!choice || typeof choice !== "object" || !("finish_reason" in choice) || choice.finish_reason !== "stop"
         || !("message" in choice) || !choice.message || typeof choice.message !== "object"
