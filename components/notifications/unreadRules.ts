@@ -122,3 +122,34 @@ export function findNewChannels(
   if (!prev) return [];
   return Object.keys(next).filter((id) => !(id in prev));
 }
+
+// ---- 스레드 댓글 멘션 배지 ----
+// 스레드 댓글은 "어디까지 읽었는지" 기록이 없어서, 나를 부른 댓글을 목록으로 들고 있다가
+// 그 스레드를 열면 지운다. (브라우저에 저장해 새로고침해도 유지)
+
+export type ThreadMention = { id: number; channelId: string; parentId: number };
+
+/** 스레드 멘션 추가 (같은 댓글은 한 번만, 최대 MAX_MENTIONS 개 — 넘으면 오래된 것부터 버림) */
+export function addThreadMention(list: ThreadMention[], item: ThreadMention): ThreadMention[] {
+  if (list.some((m) => m.id === item.id)) return list;
+  return [...list, item].slice(-MAX_MENTIONS);
+}
+
+/** 그 스레드를 열었을 때: 그 스레드의 멘션을 모두 지운다 */
+export function clearThread(list: ThreadMention[], channelId: string, rootId: number): ThreadMention[] {
+  const next = list.filter((m) => !(m.channelId === channelId && m.parentId === rootId));
+  return next.length === list.length ? list : next;
+}
+
+/** 댓글이 삭제되거나 수정으로 멘션이 빠졌을 때 */
+export function removeThreadMention(list: ThreadMention[], id: number): ThreadMention[] {
+  const next = list.filter((m) => m.id !== id);
+  return next.length === list.length ? list : next;
+}
+
+/** 채널별 스레드 멘션 수 */
+export function threadMentionCounts(list: ThreadMention[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const m of list) counts[m.channelId] = (counts[m.channelId] ?? 0) + 1;
+  return counts;
+}

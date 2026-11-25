@@ -32,6 +32,7 @@ import {
   refreshUnread,
   subscribeUnread,
 } from "./unreadStore";
+import { threadMentionCounts } from "./unreadRules";
 
 export function useUnread(activeChannelId?: string | null) {
   const snap = useSyncExternalStore(subscribeUnread, getUnreadSnapshot, getServerUnreadSnapshot);
@@ -39,10 +40,12 @@ export function useUnread(activeChannelId?: string | null) {
   const { unread, mentions } = useMemo(() => {
     const unread: Record<string, boolean> = {};
     const mentions: Record<string, number> = {};
+    // 스레드 댓글 멘션은 보고 있는 채널이어도 센다 (본문에는 댓글이 안 보이므로). 스레드를 열면 사라짐
+    const threads = threadMentionCounts(snap.threadMentions);
     for (const [id, s] of Object.entries(snap.channels)) {
       const active = id === activeChannelId;
       unread[id] = !active && s.latestId > s.lastReadId;
-      mentions[id] = active ? 0 : s.mentionIds.length;
+      mentions[id] = (active ? 0 : s.mentionIds.length) + (threads[id] ?? 0);
     }
     return { unread, mentions };
   }, [snap, activeChannelId]);

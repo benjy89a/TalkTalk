@@ -17,11 +17,15 @@ import {
 import {
   applyInsert,
   applyRead,
+  addThreadMention,
   applyUpdate,
+  clearThread,
   findMissedMentions,
   findNewChannels,
   MAX_MENTIONS,
+  removeThreadMention,
   type ChannelReadState,
+  type ThreadMention,
 } from "./unreadRules";
 
 export type { ChannelReadState };
@@ -30,9 +34,38 @@ export type UnreadSnapshot = {
   myId: string | null;
   myName: string | null;
   channels: Record<string, ChannelReadState>;
+  threadMentions: ThreadMention[]; // 아직 열어 보지 않은 스레드 댓글 멘션 (배지에 더함)
 };
 
-const EMPTY: UnreadSnapshot = { myId: null, myName: null, channels: {} };
+const EMPTY: UnreadSnapshot = { myId: null, myName: null, channels: {}, threadMentions: [] };
+
+// 스레드 멘션은 DB 에 읽음 기록이 없어서 브라우저에 저장한다 (사람마다 따로)
+const threadKey = (uid: string) => `talktalk:threadMentions:${uid}`;
+
+function loadThreadMentions(uid: string): ThreadMention[] {
+  try {
+    const raw = localStorage.getItem(threadKey(uid));
+    const list = raw ? (JSON.parse(raw) as ThreadMention[]) : [];
+    return Array.isArray(list) ? list.filter((m) => typeof m?.id === "number") : [];
+  } catch {
+    return [];
+  }
+}
+
+function setThreadMentions(next: ThreadMention[]) {
+  if (next === state.threadMentions) return;
+  setState({ ...state, threadMentions: next });
+  try {
+    if (state.myId) localStorage.setItem(threadKey(state.myId), JSON.stringify(next));
+  } catch {
+    // 저장 못 해도 이번 접속 동안은 배지가 맞게 보인다
+  }
+}
+
+/** 스레드 패널을 열었을 때 부른다 — 그 스레드의 멘션 배지를 지운다 */
+export function markThreadSeen(channelId: string, rootId: number) {
+  setThreadMentions(clearThread(state.threadMentions, channelId, rootId));
+}
 
 let state: UnreadSnapshot = EMPTY;
 const listeners = new Set<() => void>();
@@ -129,13 +162,65 @@ export async function refreshUnread() {
   // 같은 사람이 다시 읽은 경우에만 "놓친 멘션"을 찾는다 (처음 로그인 때의 예전 멘션은 배지로만)
   const prevChannels = state.myId === uid ? state.channels : null;
   const nextChannels = Object.fromEntries(rows);
-  setState({ myId: uid, myName, channels: nextChannels });
+  // 스레드 멘션: 같은 사람이면 지금 값 유지, 처음(또는 다른 계정)이면 브라우저에 저장해 둔 값을 불러옴.
+  // 나간 채널의 것은 버린다
+  const threads = (state.myId === uid ? state.threadMentions : loadThreadMentions(uid)).filter(
+    (m) => m.channelId in nextChannels,
+  );
+  setState({ myId: uid, myName, channels: nextChannels, threadMentions: threads });
 
   const missed = findMissedMentions(prevChannels, nextChannels, notifiedIds);
   if (missed.length > 0) void notifyMissed(missed.map((m) => m.messageId));
 
   // 놓친 초대 (화면이 숨겨져 실시간 신호를 못 받은 사이 새로 생긴 채널)
   for (const channelId of findNewChannels(prevChannels, nextChannels)) void notifyNewChannel(channelId);
+
+  // 놓친 스레드 댓글 멘션 (스레드 댓글은 배지에 넣지 않으므로 위 방법으로는 못 찾는다)
+  void checkMissedThreadMentions(uid, myName, Object.keys(nextChannels), prevChannels !== null);
+}
+
+// ---- 놓친 스레드 댓글 멘션 ----
+// "지난번 다시 읽기 때 본 가장 큰 메시지 번호" 이후에 달린 스레드 댓글 중 나를 부른 것을 찾아 알림.
+// 처음 로그인했을 때는 기준점만 정하고 알리지 않는다 (예전 댓글 알림이 쏟아지지 않게).
+let threadWatermark: { uid: string; id: number } | null = null;
+const MAX_MISSED_THREAD = 3;
+
+async function checkMissedThreadMentions(uid: string, myName: string | null, channelIds: string[], sameUser: boolean) {
+  const supabase = createClient();
+  // 지금 볼 수 있는 가장 큰 메시지 번호 (본문·댓글 모두)
+  const { data: newest } = await supabase
+    .from("messages")
+    .select("id")
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const newestId = newest?.id ?? 0;
+
+  const prev = threadWatermark?.uid === uid && sameUser ? threadWatermark.id : null;
+  threadWatermark = { uid, id: Math.max(prev ?? 0, newestId) };
+  if (prev === null || !myName || channelIds.length === 0 || newestId <= prev) return;
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, channel_id, user_id, content, parent_id")
+    .not("parent_id", "is", null)
+    .in("channel_id", channelIds)
+    .gt("id", prev)
+    .lte("id", newestId)
+    .neq("user_id", uid)
+    .is("deleted_at", null)
+    .or(`content.ilike.${quoteFilter(`*@${escapeLike(myName)}*`)},content.ilike.*@${ALL_MENTION}*`)
+    .order("id", { ascending: false })
+    .limit(20);
+  if (error) {
+    console.error("[unread] 놓친 스레드 멘션 불러오기 실패:", error.message);
+    return;
+  }
+  (data ?? [])
+    .filter((r) => !notifiedIds.has(r.id) && isMentioned(r.content, myName, knownNames))
+    .slice(0, MAX_MISSED_THREAD)
+    .reverse()
+    .forEach(emitMention);
 }
 
 // ---- 초대 알림 (비공개 채널 초대 · 새 DM) ----
@@ -197,6 +282,13 @@ const notifiedIds = new Set<number>(); // 이미 알림을 띄운 메시지 (같
 function emitMention(row: Pick<Message, "id" | "channel_id" | "user_id" | "content" | "parent_id">) {
   if (notifiedIds.has(row.id)) return;
   notifiedIds.add(row.id);
+  // 스레드 댓글 멘션은 배지 목록에 더한다 (스레드를 열면 지워짐). 알림 신호보다 먼저 —
+  // 그 스레드를 이미 열어 두었으면 알림 쪽(NotificationToasts)이 신호를 받자마자 다시 지운다
+  if (row.parent_id !== null) {
+    setThreadMentions(
+      addThreadMention(state.threadMentions, { id: row.id, channelId: row.channel_id, parentId: row.parent_id }),
+    );
+  }
   const check = checkMention(row.content, state.myName ?? "", knownNames);
   window.dispatchEvent(
     new CustomEvent<MentionEventDetail>(MENTION_EVENT, {
@@ -275,6 +367,11 @@ function onNewMessage(row: Message) {
 
 // ---- 메시지 수정·삭제 (Realtime UPDATE — 삭제도 deleted_at 이 채워진 UPDATE 로 온다) ----
 function onMessageUpdated(row: Message) {
+  // 스레드 댓글: 삭제되거나 수정으로 멘션이 빠지면 배지에서 뺀다
+  if (row.parent_id !== null && (row.deleted_at || !mentionsMe(row))) {
+    setThreadMentions(removeThreadMention(state.threadMentions, row.id));
+  }
+
   const cur = state.channels[row.channel_id];
   if (!cur) return;
 

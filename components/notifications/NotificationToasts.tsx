@@ -25,6 +25,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useSelectedChannel } from "@/components/layout/ChannelContext";
 import { useOpenThread } from "@/components/chat/threads";
 import { useUnread } from "./useUnread";
+import { markThreadSeen } from "./unreadStore";
 import {
   desktopAllowed,
   requestDesktop,
@@ -104,6 +105,12 @@ export default function NotificationToasts() {
     latest.current = { channelId, openThreadRootId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList };
   });
 
+  // 스레드 패널을 열면 그 스레드의 멘션 배지를 지운다 (알림 카드를 눌러 열어도 같음)
+  const openThreadChannelId = openThread?.channelId ?? null;
+  useEffect(() => {
+    if (openThreadChannelId && openThreadRootId !== null) markThreadSeen(openThreadChannelId, openThreadRootId);
+  }, [openThreadChannelId, openThreadRootId]);
+
   const dismiss = useCallback((key: string) => {
     clearTimeout(timers.current.get(key));
     timers.current.delete(key);
@@ -167,7 +174,11 @@ export default function NotificationToasts() {
           openThreadRootId: latest.current.openThreadRootId,
         });
       // 보이는 메시지면 미리 걸러서 이름을 읽어 오지 않는다
-      if (onScreen() && document.visibilityState === "visible") return;
+      if (onScreen() && document.visibilityState === "visible") {
+        // 열어 둔 스레드에 온 댓글 멘션은 이미 보고 있으므로 배지에도 남기지 않는다
+        if (d.parentId !== null) markThreadSeen(d.channelId, d.parentId);
+        return;
+      }
       const [name, channel] = await Promise.all([authorName(d.authorId), channelInfo(d.channelId)]);
       notify(
         {
