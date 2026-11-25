@@ -15,6 +15,14 @@ function loadInfo(): Promise<AiProviderInfo | null> {
   return cached;
 }
 
+/**
+ * 받아 둔 업체·모델 이름을 버린다. 관리자가 설정을 저장한 뒤 부르면,
+ * 채팅 화면으로 돌아왔을 때(페이지 새로고침 없이 화면만 바뀌어도) 새 이름을 다시 받아 온다.
+ */
+export function resetAiProviderInfo() {
+  cached = null;
+}
+
 /** 지금 서버가 쓰는 AI 업체·모델 (받기 전·실패 시 null) */
 export function useAiProviderInfo(): AiProviderInfo | null {
   const [info, setInfo] = useState<AiProviderInfo | null>(null);
