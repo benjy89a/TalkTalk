@@ -18,6 +18,7 @@ import { MAX_RENDERED } from "./types";
 import { useChannelMessages } from "./useChannelMessages";
 import { useCurrentUserId } from "./useCurrentUserId";
 import { toggleReaction, useReactions } from "./useReactions";
+import { useImageViewer } from "./ImageViewer";
 import { MentionProvider } from "./mentionLink";
 import { useReadCounts } from "./readCounts";
 import { useStickToBottom } from "./useStickToBottom";
@@ -76,6 +77,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
   useMarkAsRead(channelId, lastSavedId);
   // 말풍선 옆 "안 읽은 사람 수" (카톡) — 멤버들의 읽음 위치를 실시간으로 받아서 셈
   const unreadOf = useReadCounts(channelId);
+  const imageViewer = useImageViewer(); // 첨부 이미지 크게 보기
 
   // 이모지 반응 (저장된 메시지만)
   const savedIds = useMemo(() => messages.filter((m) => !m.status).map((m) => m.id), [messages]);
@@ -169,7 +171,7 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
       {messages.length === 0 ? (
         <CenterText>아직 메시지가 없어요. 첫 메시지를 보내보세요!</CenterText>
       ) : (
-        <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-2 py-4 sm:p-4">
+        <div ref={scrollRef} onScroll={onScroll} onClick={imageViewer.onClick} className="min-h-0 flex-1 overflow-y-auto px-2 py-4 sm:p-4">
           <div ref={contentRef}>
             {/* (B-6) 맨 위: 불러오는 중 / 더 없으면 채널 시작 안내 */}
             <div className="py-2 text-center text-xs leading-5 text-gray-500">
@@ -205,6 +207,8 @@ export default function MessageList({ channelId, renderAttachments, onOpenThread
       {detached ? <JumpToLatestButton onClick={reload} /> : <NewMessagesButton count={unseen} onClick={scrollToBottom} />}
       {/* 위로 올려 보는 중이면 오른쪽 아래 동그란 ↓ (카톡처럼) */}
       <ScrollDownButton show={!detached && !atBottom && unseen === 0 && messages.length > 0} onClick={scrollToBottom} />
+      {/* 첨부 이미지를 누르면 새 탭 대신 화면 위에 크게 (ImageViewer.tsx) */}
+      {imageViewer.element}
     </div>
     </MentionProvider>
   );
