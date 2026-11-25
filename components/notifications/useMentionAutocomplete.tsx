@@ -26,7 +26,8 @@ import { ALL_MENTION, findMentionQuery, insertMention } from "./mentions";
 
 type Member = { id: string; name: string; note?: string };
 
-// "@all" — 채널 멤버 전원에게 알림 (목록 맨 위). 1:1 대화처럼 상대가 한 명뿐이면 보여 주지 않는다
+// "@all" — 채널 멤버 전원에게 알림 (목록 맨 위). 공개·비공개 채널에서만 보여 주고 1:1 DM 에서는 숨긴다
+// (멤버가 두 명뿐인 비공개 채널에서도 보인다)
 const ALL_ENTRY: Member = { id: "__all__", name: ALL_MENTION, note: "채널 모든 멤버에게 알림" };
 
 type Options = {
@@ -38,26 +39,29 @@ type Options = {
 
 const MAX_SUGGESTIONS = 8;
 
-// 채널 멤버 이름 불러오기 (나는 빼고)
-async function loadMembers(channelId: string): Promise<Member[]> {
+// 채널 멤버 이름(나는 빼고)과 채널 종류 불러오기
+async function loadMembers(channelId: string): Promise<{ list: Member[]; isDm: boolean }> {
   const supabase = createClient();
-  const [{ data: sessionData }, { data, error }] = await Promise.all([
+  const [{ data: sessionData }, { data, error }, { data: channel }] = await Promise.all([
     supabase.auth.getSession(),
     supabase.from("channel_members").select("user_id, profiles(name)").eq("channel_id", channelId),
+    supabase.from("channels").select("type").eq("id", channelId).maybeSingle(),
   ]);
+  const isDm = channel?.type === "dm";
   if (error) {
     console.error("[mention] 멤버 불러오기 실패:", error.message);
-    return [];
+    return { list: [], isDm };
   }
   const myId = sessionData.session?.user.id;
-  return (data ?? [])
+  const list = (data ?? [])
     .filter((r) => r.user_id !== myId && r.profiles?.name)
     .map((r) => ({ id: r.user_id, name: r.profiles!.name }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  return { list, isDm };
 }
 
 export function useMentionAutocomplete({ channelId, textareaRef, text, setText }: Options) {
-  const [membersState, setMembersState] = useState<{ channelId: string; list: Member[] }>();
+  const [membersState, setMembersState] = useState<{ channelId: string; list: Member[]; isDm: boolean }>();
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState({ key: "", index: 0 });
   const [dismissedAt, setDismissedAt] = useState<number | null>(null); // Esc 로 닫은 "@" 위치
@@ -65,17 +69,17 @@ export function useMentionAutocomplete({ channelId, textareaRef, text, setText }
   // 채널이 바뀌면 그 채널 멤버를 불러온다
   useEffect(() => {
     let cancelled = false;
-    loadMembers(channelId).then((list) => {
-      if (!cancelled) setMembersState({ channelId, list });
+    loadMembers(channelId).then(({ list, isDm }) => {
+      if (!cancelled) setMembersState({ channelId, list, isDm });
     });
     return () => {
       cancelled = true;
     };
   }, [channelId]);
-  const members = useMemo(
-    () => (membersState?.channelId === channelId ? membersState.list : []),
-    [membersState, channelId],
-  );
+  const loaded = membersState?.channelId === channelId ? membersState : null;
+  const members = useMemo(() => loaded?.list ?? [], [loaded]);
+  // "@all" 은 DM 이 아닌 채널(공개·비공개)에서, 나 말고 멤버가 한 명이라도 있으면 보여 준다
+  const canAll = !!loaded && !loaded.isDm && members.length >= 1;
 
   // 지금 "@글자" 를 치는 중인지
   const match = findMentionQuery(text, Math.min(caret, text.length));
@@ -91,9 +95,9 @@ export function useMentionAutocomplete({ channelId, textareaRef, text, setText }
         Number(!a.name.toLowerCase().startsWith(query)) -
         Number(!b.name.toLowerCase().startsWith(query)),
     );
-    const withAll = members.length >= 2 && ALL_MENTION.startsWith(query) ? [ALL_ENTRY, ...hit] : hit;
+    const withAll = canAll && ALL_MENTION.startsWith(query) ? [ALL_ENTRY, ...hit] : hit;
     return withAll.slice(0, MAX_SUGGESTIONS);
-  }, [members, query, hasMatch]);
+  }, [members, query, hasMatch, canAll]);
 
   const open = match !== null && match.start !== dismissedAt && suggestions.length > 0;
   const key = `${match?.start}:${query}`;
