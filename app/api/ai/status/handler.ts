@@ -76,13 +76,15 @@ async function requireAdmin(createClient: () => Promise<SupabaseClient<Database>
 export async function handleStatusGet(
   request: Request,
   createClient: () => Promise<SupabaseClient<Database>>,
-  config: StatusConfig,
+  /** 값 또는 "권한 확인을 통과한 뒤" 읽어 오는 함수. 함수로 주면 로그인하지 않은 요청은 설정 테이블을 읽지 않는다. */
+  configSource: StatusConfig | (() => Promise<StatusConfig>),
 ): Promise<Response> {
   // ?view=public: 로그인한 누구나 업체·모델 "이름"만 본다(화면 안내문이 실제 업체를 가리키도록). 키 설정 여부는 관리자만.
   let publicView = false;
   try { publicView = new URL(request.url).searchParams.get("view") === "public"; } catch { /* 잘못된 주소는 관리자 전용 응답으로 */ }
   const denied = publicView ? await requireLogin(createClient) : await requireAdmin(createClient);
   if (denied) return denied;
+  const config = typeof configSource === "function" ? await configSource() : configSource;
   // 필드를 하나씩 골라 담아 키 관련 정보가 섞이지 않게 한다.
   const base = {
     provider: config.provider,

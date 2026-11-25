@@ -253,3 +253,15 @@ test("rpc 오류 분류: 함수·테이블 없음=007 미적용, 관리자 아�
   assert.equal(classifySettingsError(null).kind, "failed");
   assert.doesNotMatch(classifySettingsError({ code: "XX000", message: "private DB detail" }).message, /private DB detail/);
 });
+
+test("GET: 설정을 함수로 주면 권한 확인을 통과한 뒤에만 읽는다", async () => {
+  let reads = 0;
+  const source = async () => { reads++; return cfg; };
+  assert.equal((await handleStatusGet(req(), factory({ user: null }), source)).status, 401);
+  assert.equal((await handleStatusGet(req(), factory({ isAdmin: false }), source)).status, 403);
+  assert.equal(reads, 0, "거절된 요청은 설정(DB)을 읽지 않는다");
+  const res = await handleStatusGet(req(), factory(), source);
+  assert.equal(res.status, 200);
+  assert.equal(reads, 1);
+  assert.deepEqual(await res.json(), { provider: "EXAONE", model: "m", keyConfigured: true });
+});

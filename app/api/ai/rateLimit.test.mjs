@@ -51,6 +51,7 @@ test("동시 호출은 사용자당 1건: 끝나기 전에는 busy, release 후 
   const second = limiter.acquire("u1");
   assert.equal(second.ok, false);
   assert.equal(second.reason, "busy");
+  assert.match(second.message, /몇 분 걸릴 수 있으니/);
   first.release();
   assert.equal(limiter.acquire("u1").ok, true);
 });
