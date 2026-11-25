@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useSelectedChannel } from "@/components/layout/ChannelContext";
+import { useOpenThread } from "@/components/chat/threads";
 import { useUnread } from "./useUnread";
 import {
   desktopAllowed,
@@ -34,6 +35,7 @@ import {
 import {
   chooseNotify,
   INVITE_EVENT,
+  isOnScreen,
   MAX_TOASTS,
   MENTION_EVENT,
   mentionTitle,
@@ -83,14 +85,23 @@ export default function NotificationToasts() {
   const { channelId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList } =
     useSelectedChannel();
   const { mentions } = useUnread(channelId);
+  const openThread = useOpenThread(); // 지금 열려 있는 스레드 패널 (B threads.ts)
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [askDesktop, setAskDesktop] = useState(false);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // 이벤트 처리 중에 최신 값을 쓰기 위해 ref 에 담아 둔다
-  const latest = useRef({ channelId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList });
+  const openThreadRootId = openThread?.rootId ?? null;
+  const latest = useRef({
+    channelId,
+    openThreadRootId,
+    jumpToMessage,
+    selectChannel,
+    refreshChannelList,
+    refreshDmList,
+  });
   useEffect(() => {
-    latest.current = { channelId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList };
+    latest.current = { channelId, openThreadRootId, jumpToMessage, selectChannel, refreshChannelList, refreshDmList };
   });
 
   const dismiss = useCallback((key: string) => {
@@ -115,10 +126,9 @@ export default function NotificationToasts() {
 
   // ---- 알림 띄우기 (멘션·초대 공통) ----
   const notify = useCallback(
-    (t: Toast) => {
+    (t: Toast, onScreen: boolean) => {
       const how = chooseNotify({
-        messageChannelId: t.channelId,
-        activeChannelId: latest.current.channelId,
+        onScreen,
         pageVisible: document.visibilityState === "visible",
         desktopAllowed: desktopAllowed(),
       });
@@ -148,17 +158,28 @@ export default function NotificationToasts() {
   useEffect(() => {
     async function onMention(e: Event) {
       const d = (e as CustomEvent<MentionEventDetail>).detail;
-      // 지금 보고 있는 채널이면 미리 걸러서 이름을 읽어 오지 않는다
-      if (d.channelId === latest.current.channelId && document.visibilityState === "visible") return;
+      // 이미 화면에 보이는 메시지인지: 본문은 그 채널을 보고 있을 때, 스레드 댓글은 그 스레드를 열어 두었을 때
+      const onScreen = () =>
+        isOnScreen({
+          channelId: d.channelId,
+          parentId: d.parentId,
+          activeChannelId: latest.current.channelId,
+          openThreadRootId: latest.current.openThreadRootId,
+        });
+      // 보이는 메시지면 미리 걸러서 이름을 읽어 오지 않는다
+      if (onScreen() && document.visibilityState === "visible") return;
       const [name, channel] = await Promise.all([authorName(d.authorId), channelInfo(d.channelId)]);
-      notify({
-        key: `mention-${d.messageId}`,
-        icon: "💬",
-        channelId: d.channelId,
-        messageId: d.messageId,
-        title: mentionTitle(name, channel),
-        body: previewText(d.content),
-      });
+      notify(
+        {
+          key: `mention-${d.messageId}`,
+          icon: d.all ? "📢" : "💬",
+          channelId: d.channelId,
+          messageId: d.messageId, // 스레드 댓글이면 jumpToMessage 가 스레드를 열고 그 댓글을 강조
+          title: mentionTitle(name, channel, { thread: d.parentId !== null, all: d.all }),
+          body: previewText(d.content),
+        },
+        onScreen(),
+      );
     }
 
     function onInvite(e: Event) {
@@ -166,14 +187,17 @@ export default function NotificationToasts() {
       // 사이드바 목록에 새 채널·DM 이 바로 보이도록 목록을 다시 불러온다 (팀장님 ChannelContext)
       if (d.kind === "dm") latest.current.refreshDmList();
       else latest.current.refreshChannelList();
-      notify({
-        key: `invite-${d.channelId}`,
-        icon: d.kind === "dm" ? "💬" : "🔒",
-        channelId: d.channelId,
-        messageId: null,
-        title: d.title,
-        body: d.kind === "dm" ? "눌러서 대화 열기" : "눌러서 채널로 이동",
-      });
+      notify(
+        {
+          key: `invite-${d.channelId}`,
+          icon: d.kind === "dm" ? "💬" : "🔒",
+          channelId: d.channelId,
+          messageId: null,
+          title: d.title,
+          body: d.kind === "dm" ? "눌러서 대화 열기" : "눌러서 채널로 이동",
+        },
+        false, // 새로 생긴 채널은 아직 화면에 없음
+      );
     }
 
     window.addEventListener(MENTION_EVENT, onMention);

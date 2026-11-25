@@ -6,7 +6,7 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
 import { markAsRead, READ_EVENT, type ReadEventDetail } from "./markAsRead";
-import { escapeLike, mentionsName } from "./mentions";
+import { ALL_MENTION, checkMention, escapeLike, isMentioned } from "./mentions";
 import {
   INVITE_EVENT,
   inviteNotice,
@@ -38,6 +38,12 @@ let state: UnreadSnapshot = EMPTY;
 const listeners = new Set<() => void>();
 let stop: (() => void) | null = null;
 let refreshSeq = 0; // 늦게 도착한 예전 요청 결과가 최신 결과를 덮지 않게
+let knownNames: string[] = []; // 가입한 사람 이름 목록 (멘션 판단에서 가장 길게 맞는 이름을 고르기 위해)
+
+/** PostgREST or() 필터 값: 이름에 쉼표·괄호가 있어도 깨지지 않게 큰따옴표로 감싼다 */
+function quoteFilter(value: string) {
+  return `"${value.replace(/["\\]/g, "\\$&")}"`;
+}
 
 function setState(next: UnreadSnapshot) {
   if (next === state) return;
@@ -74,33 +80,37 @@ export async function refreshUnread() {
     return;
   }
 
-  const [{ data: me }, { data: members, error }] = await Promise.all([
+  const [{ data: me }, { data: members, error }, { data: people }] = await Promise.all([
     supabase.from("profiles").select("name").eq("id", uid).maybeSingle(),
     supabase.from("channel_members").select("channel_id, last_read_message_id").eq("user_id", uid),
+    // 이름이 겹칠 때 "가장 길게 맞는 이름"을 고르기 위한 이름 목록 (이름은 로그인한 사람 누구나 볼 수 있음)
+    supabase.from("profiles").select("name"),
   ]);
   if (error || !members) {
     console.error("[unread] 채널 목록 불러오기 실패:", error?.message);
     return;
   }
   const myName = me?.name?.trim() || null;
+  if (people) knownNames = people.map((p) => p.name).filter(Boolean);
 
   // 채널 수만큼 작은 요청을 동시에 보낸다
   const latestId = fetchLatestId;
 
   async function mentionIds(channelId: string, lastReadId: number) {
     if (!myName) return [];
+    // DB 에서는 "@내이름" 또는 "@all" 이 들어간 메시지를 넓게 찾고, 정확한 판단(가장 긴 이름·@allen 제외)은 아래에서
     const { data } = await supabase
       .from("messages")
-      .select("id")
+      .select("id, content")
       .eq("channel_id", channelId)
       .is("parent_id", null)
       .is("deleted_at", null) // 삭제된 메시지는 세지 않음
       .gt("id", lastReadId)
       .neq("user_id", uid!)
-      .ilike("content", `%@${escapeLike(myName)}%`)
+      .or(`content.ilike.${quoteFilter(`*@${escapeLike(myName)}*`)},content.ilike.*@${ALL_MENTION}*`)
       .order("id")
       .limit(MAX_MENTIONS);
-    return (data ?? []).map((r) => r.id);
+    return (data ?? []).filter((r) => isMentioned(r.content, myName, knownNames)).map((r) => r.id);
   }
 
   const rows = await Promise.all(
@@ -184,12 +194,20 @@ function onMemberInserted(row: { channel_id: string; user_id: string }) {
 // 돌아와서 DB 를 다시 읽을 때 새로 찾은 멘션도 알림 카드로 보여 준다.
 const notifiedIds = new Set<number>(); // 이미 알림을 띄운 메시지 (같은 알림 두 번 방지)
 
-function emitMention(row: Pick<Message, "id" | "channel_id" | "user_id" | "content">) {
+function emitMention(row: Pick<Message, "id" | "channel_id" | "user_id" | "content" | "parent_id">) {
   if (notifiedIds.has(row.id)) return;
   notifiedIds.add(row.id);
+  const check = checkMention(row.content, state.myName ?? "", knownNames);
   window.dispatchEvent(
     new CustomEvent<MentionEventDetail>(MENTION_EVENT, {
-      detail: { channelId: row.channel_id, messageId: row.id, authorId: row.user_id, content: row.content },
+      detail: {
+        channelId: row.channel_id,
+        messageId: row.id,
+        authorId: row.user_id,
+        content: row.content,
+        parentId: row.parent_id,
+        all: check.all && !check.me, // 내 이름으로도 불렀으면 "나를 언급"으로 보여 줌
+      },
     }),
   );
 }
@@ -197,7 +215,7 @@ function emitMention(row: Pick<Message, "id" | "channel_id" | "user_id" | "conte
 async function notifyMissed(ids: number[]) {
   const { data, error } = await createClient()
     .from("messages")
-    .select("id, channel_id, user_id, content")
+    .select("id, channel_id, user_id, content, parent_id")
     .in("id", ids)
     .order("id");
   if (error) {
@@ -225,19 +243,23 @@ function isMine(row: Message) {
   return row.user_id === state.myId;
 }
 
+// 나를 불렀거나(@내이름, 가장 길게 맞는 이름 기준) 전체 멘션(@all)이면 true. 내가 쓴 글은 아님
 function mentionsMe(row: Message) {
-  return !isMine(row) && !!state.myName && mentionsName(row.content, state.myName);
+  return !isMine(row) && !!state.myName && isMentioned(row.content, state.myName, knownNames);
 }
 
 // ---- 새 메시지 (Realtime INSERT) ----
 function onNewMessage(row: Message) {
-  if (row.parent_id !== null) return; // 스레드 답글은 세지 않음
-
   const mine = isMine(row);
   const mentioned = mentionsMe(row);
 
-  // 나를 멘션한 새 메시지 → 알림(NotificationToasts)에 신호 (방금 참여한 채널이어도 알림은 보낸다)
+  // 나를 멘션한 새 메시지 → 알림(NotificationToasts)에 신호
+  // - 스레드 댓글 속 멘션도 알린다 (팀장님 요청). 누르면 스레드를 열고 그 댓글을 강조
+  // - 방금 참여한 채널이어도 알린다
   if (mentioned) emitMention(row);
+
+  // 미읽음·배지 계산은 채널 본문 메시지만 (읽음 위치가 본문 기준이라서)
+  if (row.parent_id !== null) return;
 
   // 모르는 채널(방금 참여한 채널 등)이면 DB 에서 다시 읽어 온다
   if (!state.channels[row.channel_id]) {
