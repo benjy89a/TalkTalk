@@ -34,14 +34,17 @@ export function checkMention(content: string, myName: string, knownNames: readon
     if (i > 0 && BEFORE_AT_BLOCK.test(lower[i - 1])) continue;
     const rest = lower.slice(i + 1);
 
+    // "@all" 인지 (뒤에 영문·숫자가 이어지면 아님)
+    const isAll = rest.startsWith(ALL_MENTION) && !AFTER_ALL_BLOCK.test(rest.slice(ALL_MENTION.length));
     // 가장 길게 맞는 사람 이름 (예: "@문수정test2" → "문수정test2", "@문수정test님" → "문수정test")
     const longest = names.find((n) => rest.startsWith(n));
-    if (longest) {
-      if (longest === me) result.me = true;
-      continue;
-    }
-    if (rest.startsWith(ALL_MENTION) && !AFTER_ALL_BLOCK.test(rest.slice(ALL_MENTION.length))) {
+
+    // "@all" 보다 더 길게 맞는 이름(예: "allen")이 있을 때만 사람 이름으로 본다.
+    // 이름이 "a"·"al"·"all" 처럼 "all" 의 앞부분이어도 "@all" 은 전체 멘션
+    if (isAll && (!longest || longest.length <= ALL_MENTION.length)) {
       result.all = true;
+    } else if (longest === me) {
+      result.me = true;
     }
   }
   return result;

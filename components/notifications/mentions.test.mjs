@@ -54,3 +54,14 @@ test("@글자 를 @이름 으로 바꾸기", () => {
 test("DB 검색용 특수문자 처리", () => {
   assert.equal(escapeLike("50%_a\\"), "50\\%\\_a\\\\");
 });
+
+test("@all 은 'all' 의 앞부분 이름이 있어도 전체 멘션", () => {
+  // "a" "al" "all" 이라는 이름의 사람이 있어도 "@all" 은 전체 멘션
+  assert.deepEqual(checkMention("@all 공지", "문수정Test", ["a", "al", "all", "문수정Test"]), { me: false, all: true });
+  // 그 사람 본인에게도 전체 멘션으로 (me 가 아니라 all)
+  assert.deepEqual(checkMention("@all 공지", "al", ["a", "al", "문수정Test"]), { me: false, all: true });
+  // "allen" 처럼 더 길게 맞는 이름은 그 사람
+  assert.deepEqual(checkMention("@allen 확인", "allen", ["allen"]), { me: true, all: false });
+  // "@a 확인" 은 여전히 a 라는 사람
+  assert.deepEqual(checkMention("@a 확인", "a", ["a", "al"]), { me: true, all: false });
+});
