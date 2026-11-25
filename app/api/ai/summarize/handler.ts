@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import type { AiProviderConfig } from "../provider";
+import type { AiRateLimiter } from "../rateLimit";
 
 export const MAX_MESSAGES = 100;
 export const MAX_MESSAGE_LENGTH = 4000;
@@ -255,7 +256,10 @@ export async function handleSummarize(
   request: Request,
   createClient: () => Promise<SupabaseClient<Database>>,
   generateSummary: SummaryGenerator = unavailableSummary,
+  /** 사용자별 호출 제한(동시 1건·분당 5회). 안 넘기면 제한하지 않는다(독립 테스트용). route 가 aiRateLimiter 를 넘긴다. */
+  limiter?: AiRateLimiter,
 ): Promise<Response> {
+  let release: (() => void) | undefined;
   try {
     request.signal.throwIfAborted();
     const input = await readInput(request);
@@ -306,6 +310,12 @@ export async function handleSummarize(
     }
 
     request.signal.throwIfAborted();
+    // 입력 검증·권한 확인을 모두 통과한 "실제 AI 호출"만 횟수에 센다.
+    if (limiter) {
+      const slot = limiter.acquire(auth.user.id);
+      if (!slot.ok) throw new SummaryError(429, slot.reason === "busy" ? "USER_BUSY" : "USER_RATE_LIMITED", slot.message);
+      release = slot.release;
+    }
     const summary = await generateSummary(messages, request.signal);
     request.signal.throwIfAborted();
     if (typeof summary !== "string" || !summary.trim() || summary.length > 8000) {
@@ -321,6 +331,8 @@ export async function handleSummarize(
     }
     // 원문 대화·키·접속 주소·DB 내부 오류는 응답이나 로그에 넣지 않는다.
     return json({ error: { code: "INTERNAL_ERROR", message: "요약을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요." } }, 500);
+  } finally {
+    release?.();
   }
 }
 

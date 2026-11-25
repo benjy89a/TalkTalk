@@ -51,7 +51,8 @@ export async function searchMessages(
   // 로그인 사용자의 세션과 messages_select RLS가 읽을 수 있는 메시지를 제한한다.
   let query = supabase
     .from("messages")
-    .select("id, channel_id, content, created_at, parent_id, channels(name, type), profiles(name)")
+    // profiles 는 어느 연결인지 적는다(messages_user_id_fkey). 나중에 messages↔profiles 연결이 늘어도 "관계가 2개" 오류(PGRST201)로 검색이 깨지지 않게 한다.
+    .select("id, channel_id, content, created_at, parent_id, channels(name, type), profiles!messages_user_id_fkey(name)")
     // 소프트 삭제된 메시지는 본문이 남아 있을 수 있어 검색에서 제외한다.
     .is("deleted_at", null)
     .ilike("content", `%${escapedKeyword}%`)
