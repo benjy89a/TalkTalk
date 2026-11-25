@@ -42,8 +42,8 @@ export async function GET(request: Request) {
   // 관리자 화면은 방금 저장한 값을 바로 봐야 하므로 캐시 없이 읽고, 안내 문구용 공개 보기는 캐시를 쓴다.
   let publicView = false;
   try { publicView = new URL(request.url).searchParams.get("view") === "public"; } catch { /* 관리자 전용으로 */ }
-  const { config } = await currentStatus(!publicView);
-  return handleStatusGet(request, createClient, config);
+  // 권한 확인을 통과한 뒤에만 설정(DB)을 읽는다.
+  return handleStatusGet(request, createClient, async () => (await currentStatus(!publicView)).config);
 }
 
 export async function PUT(request: Request) {

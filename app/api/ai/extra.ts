@@ -169,7 +169,7 @@ async function withLimit<T>(limiter: AiRateLimiter | undefined, userId: string, 
 
 function unavailable(): never {
   // 독립 handler 테스트의 안전한 기본값. 실제 route만 EXAONE 함수를 주입한다.
-  throw new ExtraError(503, "AI_NOT_CONNECTED", "AI 기능은 아직 연결되지 않았습니다. 제공업체 결정 후 사용할 수 있습니다.");
+  throw new ExtraError(503, "AI_NOT_CONNECTED", "AI 기능이 연결되지 않았습니다. 서버의 AI 설정을 확인해 달라고 관리자에게 요청해 주세요.");
 }
 
 export const unavailableInterpreter: SearchInterpreter = async () => unavailable();

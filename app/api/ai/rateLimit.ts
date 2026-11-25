@@ -10,7 +10,7 @@ export const AI_LIMIT_WINDOW_MS = 60_000;
 
 export type AiAcquireResult =
   | { ok: true; /** AI 호출이 끝나면(성공·실패·취소 모두) 반드시 부른다. 여러 번 불러도 안전하다. */ release: () => void }
-  | { ok: false; reason: "busy" | "rate_limited"; /** 다시 시도할 때까지 남은 초(올림) */ retryAfterSec: number; /** 사용자에게 보여 줄 안내 */ message: string };
+  | { ok: false; reason: "busy" | "rate_limited"; /** 다시 시도할 때까지 남은 초(올림). busy 는 끝나는 시점을 알 수 없어 참고용 고정값이다 */ retryAfterSec: number; /** 사용자에게 보여 줄 안내 */ message: string };
 
 export type AiRateLimiter = {
   acquire: (userId: string) => AiAcquireResult;
@@ -45,7 +45,7 @@ export function createAiRateLimiter({
       if (calls.size > 500) for (const key of [...calls.keys()]) prune(key, time);
 
       if (inFlight.has(userId)) {
-        return { ok: false, reason: "busy", retryAfterSec: 5, message: "이미 처리 중인 AI 요청이 있습니다. 끝난 뒤 다시 시도해 주세요." };
+        return { ok: false, reason: "busy", retryAfterSec: 5, message: "이미 처리 중인 AI 요청이 있습니다. 응답에 몇 분 걸릴 수 있으니 끝난 뒤 다시 시도해 주세요." };
       }
       const recent = prune(userId, time);
       if (recent.length >= perMinute) {
