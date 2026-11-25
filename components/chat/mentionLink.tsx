@@ -61,3 +61,43 @@ export function MentionLink({ token, onDark }: { token: string; onDark: boolean 
     </>
   );
 }
+
+// ---- 메시지 수정할 때 멘션은 못 고치게 (40번) ----
+// 멘션 알림(D)은 처음 보낼 때 한 번만 가므로, 수정으로 이름을 바꾸면 "부른 사람"과 "알림 받은 사람"이 달라진다.
+// → 맨 앞 "@이름" 묶음은 수정 칸 밖에 고정해서 보여 주고, 글 중간 멘션은 저장할 때 그대로인지 확인한다.
+
+/** 지금 채널 멤버 이름 목록 (불러오는 중이면 null) */
+export function useMentionMembers() {
+  return useContext(MentionContext);
+}
+
+const MENTION_RE = /(?<![\p{L}\p{N}_.@])@([^\s@<>()]{1,30})/gu; // formatText 와 같은 규칙
+const ALL_RE = /^all(?![a-z0-9_])/i;
+
+function mentionName(token: string, members: Member[]): string | null {
+  const lower = token.toLowerCase();
+  const member = members.find((m) => lower.startsWith(m.name.toLowerCase()));
+  if (member) return member.name.toLowerCase();
+  return ALL_RE.test(token) ? "all" : null;
+}
+
+/** 글 속 멘션 이름들 (순서대로, 소문자). 비교용 */
+export function mentionsIn(text: string, members: Member[]): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(MENTION_RE)) {
+    const name = mentionName(m[1], members);
+    if (name) out.push(name);
+  }
+  return out;
+}
+
+/** 맨 앞 멘션 묶음과 나머지: "@수정님 @all 확인해 주세요" → { prefix: "@수정님 @all ", rest: "확인해 주세요" } */
+export function splitLeadingMentions(text: string, members: Member[]): { prefix: string; rest: string } {
+  let at = 0;
+  for (;;) {
+    const m = /^@([^\s@<>()]{1,30})(\s+|$)/u.exec(text.slice(at));
+    if (!m || !mentionName(m[1], members)) break;
+    at += m[0].length;
+  }
+  return { prefix: text.slice(0, at), rest: text.slice(at) };
+}

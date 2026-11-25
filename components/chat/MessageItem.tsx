@@ -22,6 +22,7 @@ import { REACTION_EMOJIS, type ReactionSummary } from "./useReactions";
 import { discardMessage, retryMessage, type DisplayMessage } from "./outbox";
 import { formatTime } from "./format";
 import { formatText } from "./formatText";
+import { mentionsIn, splitLeadingMentions, useMentionMembers } from "./mentionLink";
 
 type Props = {
   message: DisplayMessage;
@@ -132,6 +133,11 @@ export default function MessageItem({
   // (효과 안에서 상태를 바꾸지 않고, 그릴 때 "새 요청인지"만 비교 — React 권장 방식)
   // 답장 인용 줄 (맨 앞 "> 이름: 원문") 과 본문 — 수정할 때도 본문만 고치고 인용은 그대로 둔다
   const { quote, body } = splitQuote(message.content);
+  // 맨 앞 "@이름" 멘션은 수정 칸 밖에 고정 (멘션은 못 고침 — mentionLink.tsx 40번)
+  const members = useMentionMembers();
+  const { prefix: lockedMentions, rest: editableBody } = members
+    ? splitLeadingMentions(body, members)
+    : { prefix: "", rest: body };
   const editReq = useEditRequest();
   const [seenEditNonce, setSeenEditNonce] = useState(editReq?.nonce);
   if (editReq && editReq.nonce !== seenEditNonce) {
@@ -139,7 +145,7 @@ export default function MessageItem({
     if (editReq.messageId === message.id && mine && !status && !deleted && !editing) {
       setActionError(null);
       setConfirming(false);
-      setDraft(body);
+      setDraft(editableBody);
       setEditing(true);
     }
   }
@@ -206,7 +212,12 @@ export default function MessageItem({
   async function saveEdit() {
     const next = draft.trim();
     if (!next || busy) return;
-    const content = withQuote(quote ?? undefined, next); // 인용 줄은 그대로 붙여서 저장
+    // 글 중간 멘션도 그대로여야 저장 (지우거나 다른 이름으로 바꾸거나 새로 넣으면 안내만)
+    if (members && mentionsIn(editableBody, members).join("\n") !== mentionsIn(next, members).join("\n")) {
+      return setActionError("멘션(@이름)은 고칠 수 없어요. 멘션을 바꾸려면 메시지를 지우고 새로 보내 주세요.");
+    }
+    setActionError(null);
+    const content = withQuote(quote ?? undefined, lockedMentions + next); // 인용 줄 · 맨 앞 멘션은 그대로 붙여서 저장
     if (content === message.content) return setEditing(false);
     setBusy(true);
     const ok = await editMessage(message.id, content);
@@ -235,7 +246,7 @@ export default function MessageItem({
           type="button"
           onClick={() => {
             setActionError(null);
-            setDraft(body);
+            setDraft(editableBody);
             setEditing(true);
           }}
           className="rounded px-1 hover:text-[#1e325c]"
@@ -475,7 +486,7 @@ export default function MessageItem({
     else if (key === "quote") onQuote?.();
     else if (key === "copy") copyMessage();
     else if (key === "edit") {
-      setDraft(body);
+      setDraft(editableBody);
       setEditing(true);
     } else setConfirming(true);
   }
@@ -561,6 +572,11 @@ export default function MessageItem({
           {side}
           {editing ? (
             <div className="flex min-w-0 flex-1 flex-col items-end gap-1">
+              {lockedMentions && (
+                <span className="max-w-72 truncate text-[11px] leading-4 text-gray-500" title="멘션은 고칠 수 없어요">
+                  🔒 <span className="font-semibold text-violet-700">{lockedMentions.trim()}</span> · 멘션은 못 고쳐요
+                </span>
+              )}
               <textarea
                 autoFocus
                 value={draft}
