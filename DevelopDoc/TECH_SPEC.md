@@ -100,6 +100,7 @@ ai_settings     (id boolean PK(항상 true, 한 줄), ai_provider 'exaone'|'gemi
 | 안 읽은 사람 수 | 같은 채널 멤버 중 `last_read_message_id < 메시지 id` 인 사람 수 (보낸 사람 제외) |
 | 스레드 | `messages.parent_id` = root 메시지 id. 채널 본문은 `parent_id is null` |
 | 멘션 | 메시지 본문의 `@이름` 글자 (별도 테이블 없음). 이름이 겹치면 가장 길게 맞는 사람, `@all` = 채널 전원 |
+| 스레드 댓글 멘션 배지 | 댓글에는 읽음 위치가 없어서 나를 부른 댓글 목록을 브라우저(localStorage, 사용자별)에 저장, 그 스레드를 열면 지움 |
 | 답장 인용 | 본문 맨 앞 `> 이름: 원문` 한 줄 (DB 칸 추가 없음 → 검색·AI 에서도 자연스럽게 읽힘) |
 | 첨부 파일 | Storage `attachments` 버킷(비공개), 경로 `{channel_id}/{uuid}-{영문화한 파일명}`, 원래 이름은 `file_name`, 보여줄 때 1시간 signed URL |
 | 수정·삭제 | 수정하면 트리거가 `edited_at` 기록("(수정됨)"), 삭제는 `deleted_at` + 본문 비움("삭제된 메시지입니다") |
@@ -196,6 +197,7 @@ ai_settings     (id boolean PK(항상 true, 한 줄), ai_provider 'exaone'|'gemi
 - 업체 선택 우선순위: 관리자 설정(`ai_settings`, 10초 캐시) → 환경변수 `AI_PROVIDER` → EXAONE. 고른 업체의 키가 없으면 다른 업체로 대신 호출하지 않는다.
 - 응답 대기 최대 240초, 화면에 경과 시간·취소 버튼. Vercel 함수 `maxDuration = 300`. 자동 재시도 없음.
 - 한 채널에서 요약·검색·추출은 동시에 하나만 실행한다 (`aiRequestGate.ts`). 탭을 옮겨도 유지, 로그아웃하면 취소.
+- 서버 호출 제한 (`rateLimit.ts`): 사용자별 동시 1건 · 최근 60초 5회, 세 기능이 한도를 공유한다. 넘으면 429 `USER_BUSY` / `USER_RATE_LIMITED` 와 남은 시간 안내. 입력·권한 검사를 통과한 실제 AI 호출만 센다. 서버 인스턴스 메모리 기준이라 인스턴스가 여러 개면 각각 센다 (연타 방지용).
 - 입력 제한: 본문 128KiB, 메시지당 4,000자, 합계 20,000자. 오류는 `{ error: { code, message } }` 한국어 안내, `Cache-Control: no-store`.
 - 상세: `app/api/ai/README.md`, `app/api/ai/E4.md`.
 
@@ -230,7 +232,7 @@ ai_settings     (id boolean PK(항상 true, 한 줄), ai_provider 'exaone'|'gemi
 - 서비스 역할 키(service role)는 사용하지 않는다.
 
 ## 10. 테스트·품질
-- 자동 테스트: `node --test` → **311개 통과** (11/25). 실제 DB·AI 대신 가짜 응답으로 규칙(멘션 판별·미읽음 계산·파일 규칙·AI 입력 검사·오류 처리·취소 등)을 검사.
+- 자동 테스트: `node --test` → **327개 통과** (11/25). 실제 DB·AI 대신 가짜 응답으로 규칙(멘션 판별·미읽음 계산·파일 규칙·AI 입력 검사·오류 처리·취소 등)을 검사.
 - `npm run lint` · `npm run build` 에러 없음 (11/25).
 - 배포본 점검(11/24): 실시간 0.48~0.96초, 멱등(3번 전송 → 1건), 델타 동기화(끊긴 사이 3건 → 0.4초 만에 채움), 스레드, 콘솔 에러 0건.
 - 성능 측정: 메시지 1만 건 채널에서 화면 최대 500개 제한 → 50개 추가 로드 0.25~0.47초, 화면 멈춤 최대 0.12초.
