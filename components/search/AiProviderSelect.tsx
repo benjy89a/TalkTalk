@@ -7,6 +7,7 @@ import { useId, useState } from "react";
 import { aiPrimaryButton } from "./aiButtonStyles";
 import { AiSettingsError, isSelectionChanged, isValidModelInput, saveAiSettings, selectionSourceText, type AiProviderChoice } from "./aiSettingsClient";
 import type { AiProviderOption, AiStatus } from "./aiStatusClient";
+import { resetAiProviderInfo } from "./useAiProviderLabel";
 
 type Choice = "env" | "exaone" | "gemini";
 const toProvider = (choice: Choice): AiProviderChoice => (choice === "env" ? null : choice);
@@ -56,7 +57,8 @@ export default function AiProviderSelect({ status, onSaved }: { status: AiStatus
     setMessage(null);
     try {
       await saveAiSettings({ provider: draftProvider, model }, new AbortController().signal);
-      setMessage({ kind: "ok", text: "저장했습니다. 다른 서버에는 최대 10초 뒤 반영되며, 이미 열려 있는 화면의 AI 도구 버튼 모델 이름은 새로고침하면 바뀝니다." });
+      resetAiProviderInfo(); // 채팅 화면으로 돌아가면 "AI 도구 (모델명)" 버튼이 새 이름을 다시 받아 오게
+      setMessage({ kind: "ok", text: "저장했습니다. 채팅 화면으로 돌아가면 AI 도구 버튼에 새 모델 이름이 보입니다. (다른 사람이 이미 열어 둔 화면은 새로고침하면 바뀝니다. 실제 AI 호출은 최대 10초 뒤 모든 서버에 반영됩니다.)" });
       onSaved();
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof AiSettingsError ? error.message : "저장하지 못했어요. 잠시 후 다시 시도해 주세요." });

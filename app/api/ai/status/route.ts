@@ -39,11 +39,11 @@ async function currentStatus(fresh: boolean): Promise<{ provider: ResolvedAiProv
 }
 
 export async function GET(request: Request) {
-  // 관리자 화면은 방금 저장한 값을 바로 봐야 하므로 캐시 없이 읽고, 안내 문구용 공개 보기는 캐시를 쓴다.
-  let publicView = false;
-  try { publicView = new URL(request.url).searchParams.get("view") === "public"; } catch { /* 관리자 전용으로 */ }
+  // 관리자 화면도, 안내 문구용 공개 보기(?view=public)도 캐시 없이 읽는다.
+  // 공개 보기가 캐시(최대 10초)를 쓰면 관리자가 저장한 직후 다른 서버가 옛 모델 이름을 돌려줄 수 있다.
+  // 공개 보기는 화면을 열 때 한 번만 부르고 설정은 한 줄이라 DB 부담은 작다.
   // 권한 확인을 통과한 뒤에만 설정(DB)을 읽는다.
-  return handleStatusGet(request, createClient, async () => (await currentStatus(!publicView)).config);
+  return handleStatusGet(request, createClient, async () => (await currentStatus(true)).config);
 }
 
 export async function PUT(request: Request) {
