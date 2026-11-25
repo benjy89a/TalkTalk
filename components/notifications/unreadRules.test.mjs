@@ -79,3 +79,20 @@ test("새로 생긴 채널 찾기 (놓친 초대)", async () => {
   assert.deepEqual(findNewChannels({ a: s }, { a: s, b: s }), ["b"]);
   assert.deepEqual(findNewChannels({ a: s, b: s }, { a: s }), []); // 나간 채널은 아님
 });
+
+test("스레드 댓글 멘션 배지: 추가·스레드 열면 지움·삭제", async () => {
+  const { addThreadMention, clearThread, removeThreadMention, threadMentionCounts } = await import("./unreadRules.ts");
+  let list = [];
+  list = addThreadMention(list, { id: 101, channelId: "a", parentId: 1 });
+  list = addThreadMention(list, { id: 102, channelId: "a", parentId: 2 });
+  list = addThreadMention(list, { id: 103, channelId: "b", parentId: 5 });
+  list = addThreadMention(list, { id: 101, channelId: "a", parentId: 1 }); // 같은 댓글은 한 번만
+  assert.deepEqual(threadMentionCounts(list), { a: 2, b: 1 });
+
+  list = clearThread(list, "a", 1); // 스레드 1 을 열면 그 스레드 멘션만 사라짐
+  assert.deepEqual(threadMentionCounts(list), { a: 1, b: 1 });
+  assert.equal(clearThread(list, "a", 99), list); // 상관없는 스레드는 그대로
+
+  list = removeThreadMention(list, 103); // 댓글 삭제
+  assert.deepEqual(threadMentionCounts(list), { a: 1 });
+});
