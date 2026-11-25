@@ -13,6 +13,7 @@
 // 답장 (composer.ts): 말풍선 "답장" → 입력창 위 "○○님에게 답장" 줄 (✕ · Esc 로 취소). 보내면 맨 앞에 인용 줄
 // ↑ 키: 입력창이 비어 있으면 내 마지막 메시지 수정
 // 이모지 단축 입력 (emojiShortcode.ts): ":웃음" → 후보 목록. ↑↓ 이동 · Enter/Tab 넣기 · Esc 닫기
+// 캡쳐 이미지 붙여넣기 (pasteImage.ts): 채널 입력창에서 Ctrl+V(⌘+V) 하면 클립보드 이미지를 바로 첨부로 보냄
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { composerScope, requestEditLast, setQuote, useQuote, withQuote } from "./composer";
 import { draftKey, readDraft, writeDraft } from "./drafts";
@@ -21,6 +22,7 @@ import { findShortcode, matchEmojis } from "./emojiShortcode";
 import { useMentionAutocomplete } from "@/components/notifications/useMentionAutocomplete";
 import { wrapSelection } from "./formatText";
 import { MAX_LENGTH, sendMessage } from "./outbox";
+import { usePasteImage } from "./pasteImage";
 import { useTyping } from "./typing";
 
 type Props = {
@@ -83,6 +85,9 @@ export default function MessageInput({
 
   // 입력 중 신호: 글자가 있으면 "입력 중"(2초에 한 번), 비우면 바로 멈춤
   const { typingText, notifyTyping, notifyStopped } = useTyping(channelId, parentId);
+  // 캡쳐 이미지 붙여넣기 — 스레드엔 첨부 미리보기가 아직 없어서 채널 입력창에서만
+  const paste = usePasteImage(channelId, parentId);
+  const canPasteImage = parentId === null;
   useEffect(() => {
     if (text.trim()) notifyTyping();
     else notifyStopped();
@@ -262,6 +267,7 @@ export default function MessageInput({
           onChange={(e) => setText(e.target.value)}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
+          onPaste={canPasteImage ? paste.onPaste : undefined}
           placeholder={placeholder}
           aria-label={placeholder}
           className={`min-w-0 flex-1 resize-none rounded-md border bg-white px-3 py-2 text-sm leading-6 text-gray-900 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:outline-none ${
@@ -295,6 +301,20 @@ export default function MessageInput({
       {remaining <= 500 && (
         <p className={`mt-1 text-right text-xs leading-5 ${tooLong ? "text-red-600" : "text-gray-600"}`}>
           {tooLong ? `${-remaining}자 초과 (최대 ${MAX_LENGTH}자)` : `${remaining}자 남음`}
+        </p>
+      )}
+      {/* 캡쳐 이미지 보내는 중 · 실패 이유 */}
+      {paste.status && (
+        <p
+          role={paste.status.kind === "error" ? "alert" : "status"}
+          className={`mt-1 flex items-center gap-2 text-xs leading-5 ${paste.status.kind === "error" ? "text-red-700" : "text-gray-600"}`}
+        >
+          <span className="min-w-0 truncate">{paste.status.text}</span>
+          {paste.status.kind === "error" && (
+            <button type="button" onClick={paste.clearStatus} aria-label="알림 닫기" className="shrink-0 text-gray-500 hover:text-gray-800">
+              ✕
+            </button>
+          )}
         </p>
       )}
       {/* 입력창 아래 칸: 첨부 버튼 · @멘션 (D) */}
