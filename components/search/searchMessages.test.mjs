@@ -119,3 +119,11 @@ test("이미 취소된 검색은 로그인 확인이나 DB 조회를 하지 않�
   await assert.rejects(searchMessages(client, "배포", controller.signal), { name: "AbortError" });
   assert.deepEqual(calls, []);
 });
+
+test("보낸 사람 프로필은 연결 이름(messages_user_id_fkey)을 지정해 가져온다", async () => {
+  const { client, calls } = mockClient({ rows: [] });
+  await searchMessages(client, "배포");
+  const select = calls.find((call) => call[0] === "select");
+  assert.match(select[1], /profiles!messages_user_id_fkey\(name\)/);
+  assert.doesNotMatch(select[1], /[^!]profiles\(name\)/);
+});

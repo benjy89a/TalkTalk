@@ -1,6 +1,7 @@
 // POST /api/ai/summarize: { channelId, limit? } 또는 { messages: string[] }
 // 서버에서만 AI 키를 읽는다(AI_PROVIDER 로 EXAONE/Gemini 선택, 기본 EXAONE). 인증·권한 검사를 통과한 요청만 요약한다.
 import { createClient } from "@/lib/supabase/server";
+import { aiRateLimiter } from "../rateLimit";
 import { currentAiProvider } from "../currentProvider";
 import { createAiSummary, handleSummarize } from "./handler";
 
@@ -9,5 +10,5 @@ export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const provider = await currentAiProvider(); // 관리자 설정(DB) → 환경변수 순
-  return handleSummarize(request, createClient, createAiSummary({ apiKey: provider.apiKey, provider }));
+  return handleSummarize(request, createClient, createAiSummary({ apiKey: provider.apiKey, provider }), aiRateLimiter);
 }

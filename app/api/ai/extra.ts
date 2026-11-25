@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Message } from "@/types/database";
 import type { AiProviderConfig } from "./provider";
+import type { AiRateLimiter } from "./rateLimit";
 
 export const EXTRA_MAX_BODY_BYTES = 128 * 1024;
 export const EXTRA_MAX_TEXT_LENGTH = 20000;
@@ -151,6 +152,18 @@ async function respond(request: Request, work: () => Promise<unknown>): Promise<
     }
     // 대화 원문·키·접속 정보·AI 내부 오류는 응답이나 로그에 넣지 않는다.
     return Response.json({ error: { code: "INTERNAL_ERROR", message: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." } }, { status: 500, headers });
+  }
+}
+
+/** 사용자별 호출 제한(동시 1건·분당 5회) 안에서 AI 호출 하나를 실행한다. limiter 가 없으면 그대로 실행한다. */
+async function withLimit<T>(limiter: AiRateLimiter | undefined, userId: string, work: () => Promise<T>): Promise<T> {
+  if (!limiter) return work();
+  const slot = limiter.acquire(userId);
+  if (!slot.ok) throw new ExtraError(429, slot.reason === "busy" ? "USER_BUSY" : "USER_RATE_LIMITED", slot.message);
+  try {
+    return await work();
+  } finally {
+    slot.release();
   }
 }
 
@@ -332,6 +345,7 @@ export async function handleNaturalSearch(
   request: Request,
   createClient: ClientFactory,
   interpret: SearchInterpreter = unavailableInterpreter,
+  limiter?: AiRateLimiter,
 ): Promise<Response> {
   return respond(request, async () => {
     const body = await readBody(request);
@@ -346,7 +360,8 @@ export async function handleNaturalSearch(
 
     const context: Context = { referenceTime: new Date().toISOString(), timeZone: "Asia/Seoul" };
     // AI에게 SQL·채널 권한·조회 개수를 결정하게 하지 않는다. 질문 해석만 맡긴다.
-    const plan = validatePlan(await interpret(body.query.trim(), context, request.signal));
+    const question = body.query.trim();
+    const plan = validatePlan(await withLimit(limiter, userId, () => interpret(question, context, request.signal)));
     request.signal.throwIfAborted();
     let query = supabase.from("messages")
       .select("id, channel_id, content, created_at, parent_id")
@@ -504,6 +519,7 @@ export async function handleExtractTasks(
   request: Request,
   createClient: ClientFactory,
   extract: TaskExtractor = unavailableExtractor,
+  limiter?: AiRateLimiter,
 ): Promise<Response> {
   return respond(request, async () => {
     const body = await readBody(request);
@@ -527,7 +543,7 @@ export async function handleExtractTasks(
     }
     request.signal.throwIfAborted();
     const context: Context = { referenceTime: new Date().toISOString(), timeZone: "Asia/Seoul" };
-    const tasks = validateTasks(await extract(messages, context, request.signal), messages);
+    const tasks = validateTasks(await withLimit(limiter, userId, () => extract(messages, context, request.signal)), messages);
     return { tasks, messageCount: messages.length };
   });
 }
